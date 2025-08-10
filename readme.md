@@ -1,6 +1,3 @@
-# ==============================================
-# File: README.md
-# ==============================================
 # Model-Based PPO for LLM Web Agents (Text-Only)
 
 This is a **reference implementation** for training an LLM web agent with **model-based online RL (PPO)** using:
