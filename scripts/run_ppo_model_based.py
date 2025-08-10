@@ -8,7 +8,7 @@ from trl import PPOConfig
 from ..config import ModelPaths, TrainingArgs
 from ..envs.wm_env import WMAWorldModelEnv, ORMRewardModel
 from ..agents.agent import WebAgentLoop
-from ..training.ppo_train import run_model_based_ppo
+from ..training.ppo_model_based import run_model_based_ppo
 from ..data.datasets import load_mind2web, load_agentinstruct
 
 if __name__ == "__main__":
