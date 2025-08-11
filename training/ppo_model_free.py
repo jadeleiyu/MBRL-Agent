@@ -1,27 +1,18 @@
-"""Off-policy, model-free PPO using pre-collected trajectories.
-
-We load trajectories collected in a WebArena sandbox, label per-step rewards with the
-ORM reward model, convert each (state -> action) pair into a TRL-compatible (query, response)
-example, and run PPO updates without generating new rollouts during training.
-
-Replay file schema (JSONL or JSON list): one episode per line/object:
-{
-  "instruction": str,
-  "steps": [
-    {"url": str, "dom": str, "action": str, "next_url": str, "next_dom": str, "done": bool}
-  ]
-}
-"""
+# ==============================================
+# File: mbrl/training/ppo_model_free.py
+# ==============================================
 from __future__ import annotations
-
 import json
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple, Dict, Any
+
 from trl import PPOConfig, PPOTrainer
 
-from ..agents.policy import PolicyWithValue
+from ..agents.policy import PolicyAgent, _build_user_prompt
+from ..envs.encoder import WebStateEncoder
+from ..envs.wm_env import ORMRewardModel
 
 
-# ---------- Utilities ----------
+# ---------- I/O ----------
 
 def _read_json_like(path: str):
     with open(path, "r", encoding="utf-8") as f:
@@ -51,42 +42,58 @@ def load_replay(paths: Iterable[str], max_episodes: Optional[int] = None) -> Lis
     return episodes[:max_episodes] if max_episodes else episodes
 
 
-def build_query(instruction: str, url: str, dom: str) -> str:
-    return (
-        "You are a web agent. Read the current page DOM and output ONE atomic action (CLICK/TYPE/SELECT/NAVIGATE) in a strict schema."
-        f"URL: {url}\n DOM: {dom}\n Instruction: {instruction}\n Action:"
-    )
-
+# ---------- Builder ----------
 
 def to_ppo_batches(
     episodes: List[dict],
-    tokenizer,
+    reward_model: ORMRewardModel,
+    encoder: Optional[WebStateEncoder] = None,
     max_steps_per_ep: Optional[int] = None,
-) -> Tuple[List[str], List[str], List[Tuple[str, str, str, str]]]:
-    """Return (queries, responses, meta) flattened per step.
+) -> Tuple[List[str], List[str], List[float]]:
+    """Flatten replay into (queries, responses, rewards) using encoded states.
 
-    meta[i] = (instruction, dom, action, next_dom) for reward labeling and audit.
+    Supports step formats:
+      - Encoded:  step["state"|"encoded"], step["next_state"|"next_encoded"], step["action"]
+      - Raw DOMs: step has {url, dom, next_url, next_dom, action} → encode with `encoder` if provided.
     """
     queries: List[str] = []
     responses: List[str] = []
-    meta: List[Tuple[str, str, str, str]] = []
+    rewards: List[float] = []
 
     for ep in episodes:
         instr = ep.get("instruction", "Use the website to complete the task.")
         steps = ep.get("steps") or []
         if max_steps_per_ep:
             steps = steps[: max_steps_per_ep]
+        history: List[str] = []
+        prev_encoded: Optional[Dict[str, Any]] = None
         for st in steps:
-            url = st.get("url") or st.get("curr_url") or ""
-            dom = st.get("dom") or st.get("curr_dom") or st.get("html") or ""
-            action = st.get("action") or st.get("agent_action") or "CLICK(NODE())"
-            next_dom = st.get("next_dom") or st.get("next_html") or ""
-            q = build_query(instr, url, dom)
-            queries.append(q)
-            responses.append(action)
-            meta.append((instr, dom, action, next_dom))
+            if "state" in st or "encoded" in st:
+                s_enc = st.get("state") or st.get("encoded")
+                ns_enc = st.get("next_state") or st.get("next_encoded") or {}
+            else:
+                if encoder is None:
+                    # Cannot encode; skip
+                    continue
+                url = st.get("url", "")
+                dom = st.get("dom", "")
+                nurl = st.get("next_url", url)
+                ndom = st.get("next_dom", "")
+                s_enc = encoder.encode(dom, instr, url, prev_state=prev_encoded).to_dict()
+                ns_enc = encoder.encode(ndom, instr, nurl, prev_state=s_enc).to_dict()
 
-    return queries, responses, meta
+            action = st.get("action") or st.get("agent_action") or "do(action=\"Wait\")"
+            query = _build_user_prompt(instr, history, s_enc)
+            r = reward_model.step_reward(instr, s_enc, action, ns_enc)
+
+            queries.append(query)
+            responses.append(action)
+            rewards.append(r)
+
+            history.append(action)
+            prev_encoded = ns_enc
+
+    return queries, responses, rewards
 
 
 # ---------- Main trainer ----------
@@ -95,44 +102,30 @@ def run_model_free_ppo(
     policy_model_name: str,
     ppo_config: PPOConfig,
     replay_paths: Iterable[str],
-    orm_reward_model,
+    orm_reward_model: ORMRewardModel,
     max_episodes: Optional[int] = None,
     max_steps_per_ep: Optional[int] = None,
+    encode_missing: bool = True,
 ):
-    """Off-policy PPO from pre-collected trajectories.
-
-    Args:
-      policy_model_name: path/HF id of the policy (SFT checkpoint recommended)
-      ppo_config: TRL PPOConfig
-      replay_paths: list/iterable of JSON/JSONL files with trajectories
-      orm_reward_model: instance of ORMRewardModel (computes step rewards)
-      max_episodes: optional cap on episodes loaded
-      max_steps_per_ep: optional cap on steps per episode
-    """
-    # Load policy + value head and reference model for KL
-    policy = PolicyWithValue(policy_model_name)
-    ref_policy = PolicyWithValue(policy_model_name)
+    """Off-policy PPO from pre-collected trajectories (encoded-state aware)."""
+    agent = PolicyAgent(policy_model_name)
+    ref_agent = PolicyAgent(policy_model_name)
 
     ppo_trainer = PPOTrainer(
         config=ppo_config,
-        model=policy.model,
-        ref_model=ref_policy.model,
-        tokenizer=policy.tokenizer,
+        model=agent.model,
+        ref_model=ref_agent.model,
+        tokenizer=agent.tokenizer,
     )
 
-    # Build training batches from replay buffer
     episodes = load_replay(replay_paths, max_episodes=max_episodes)
-    queries, responses, meta = to_ppo_batches(episodes, policy.tokenizer, max_steps_per_ep=max_steps_per_ep)
+    encoder = WebStateEncoder() if encode_missing else None
 
-    # Label rewards with ORM (step-wise)
-    rewards: List[float] = []
-    for (instr, dom, action, next_dom) in meta:
-        r = orm_reward_model.step_reward(instr, dom, action, next_dom)
-        rewards.append(r)
+    queries, responses, rewards = to_ppo_batches(
+        episodes, reward_model=orm_reward_model, encoder=encoder, max_steps_per_ep=max_steps_per_ep
+    )
 
-    # TRL PPO expects per-sample scalar reward; we provide step-wise rewards directly.
-    # Run a number of PPO epochs over the loaded buffer.
     for _ in range(ppo_config.ppo_epochs):
         ppo_trainer.step(queries, responses, rewards)
 
-    return policy, ppo_trainer
+    return agent, ppo_trainer

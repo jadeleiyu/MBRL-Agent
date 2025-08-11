@@ -1,37 +1,38 @@
 # ==============================================
-# File: scripts/run_ppo.py
+# File: scripts/run_ppo_model_based.py
 # ==============================================
 import os
-from datasets import load_dataset
 from trl import PPOConfig
 
-from ..config import ModelPaths, TrainingArgs
-from ..envs.wm_env import WMAWorldModelEnv, ORMRewardModel
-from ..agents.agent import WebAgentLoop
+from ..config import TrainingArgs
+from ..envs.wm_env import WebWorldModel, ORMRewardModel
 from ..training.ppo_model_based import run_model_based_ppo
-from ..data.datasets import load_mind2web, load_agentinstruct
+from ..data.datasets import mind2web_instructions, webrl_instructions
+
 
 if __name__ == "__main__":
-    mp = ModelPaths()
     targs = TrainingArgs()
 
-    # 1) load world model simulator
-    env = WMAWorldModelEnv(base_model=mp.world_model_base, adapter=mp.world_model_adapter)
+    # World model (+ encoded-state I/O) and reward model
+    world = WebWorldModel()
+    orm = ORMRewardModel()
 
-    # 2) load reward model
-    orm = ORMRewardModel(mp.reward_model)
+    # Build instruction pool
+    mind2web_path = os.getenv("MIND2WEB_JSON", "/mnt/data/mind2web_sample.json")
+    webrl_path = os.getenv("WEBRL_JSON", "/mnt/data/webrl_sample.json")
 
-    # 3) glue into an agent loop
-    loop = WebAgentLoop(env, orm, horizon=targs.rollout_horizon)
+    instr = []
+    instr += mind2web_instructions(local_path=mind2web_path if os.path.exists(mind2web_path) else None,
+                                   split=os.getenv("MIND2WEB_SPLIT", "train"))
+    if os.path.exists(webrl_path):
+        instr += webrl_instructions(local_path=webrl_path)
+    max_instr = int(os.getenv("PPO_MAX_INSTR", "200"))
+    instructions = instr[:max_instr]
 
-    # 4) seed instructions from datasets
-    ds1 = load_mind2web("train").select(range(200))
-    ds2 = load_agentinstruct("train").select(range(200))
-    instructions = [ex["instruction"] for ex in ds1] + [ex["instruction"] for ex in ds2]
-
-    # 5) PPO config
+    # PPO config (policy starts from SFT ckpt)
+    policy_ckpt = os.getenv("POLICY_CKPT", "./checkpoints/sft-llama3.1-8b")
     ppo_cfg = PPOConfig(
-        model_name=os.getenv("POLICY_CKPT", "./checkpoints/sft-llama3.1-8b"),
+        model_name=policy_ckpt,
         learning_rate=targs.ppo_lr,
         batch_size=targs.ppo_batch_size,
         mini_batch_size=targs.ppo_mini_batch_size,
@@ -40,17 +41,17 @@ if __name__ == "__main__":
         gradient_accumulation_steps=targs.gradient_accumulation_steps,
     )
 
-    policy, trainer = run_model_based_ppo(
-        policy_model_name=ppo_cfg.model_name,
-        agent_loop=loop,
+    agent, trainer = run_model_based_ppo(
+        policy_ckpt=policy_ckpt,
+        world_model=world,
+        reward_model=orm,
         instructions=instructions,
         ppo_config=ppo_cfg,
+        horizon=targs.rollout_horizon,
         max_new_tokens=targs.generation_max_new_tokens,
     )
 
-    out_dir = os.getenv("PPO_OUT", "./checkpoints/ppo-llama3.1-8b")
+    out_dir = os.getenv("PPO_OUT", "./checkpoints/ppo-llama3.1-8b-encoded")
     trainer.save_pretrained(out_dir)
-    policy.tokenizer.save_pretrained(out_dir)
+    agent.tokenizer.save_pretrained(out_dir)
     print(f"PPO policy saved to {out_dir}")
-
-

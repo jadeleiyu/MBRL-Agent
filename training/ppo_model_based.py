@@ -1,57 +1,61 @@
+# ==============================================
+# File: mbrl/training/ppo_model_based.py
+# ==============================================
+from __future__ import annotations
 from typing import List
 
-import torch
 from trl import PPOConfig, PPOTrainer
 
-from ..agents.policy import PolicyWithValue
+from ..agents.policy import PolicyAgent, _build_user_prompt
+from ..envs.wm_env import WebWorldModel, ORMRewardModel
 from ..agents.agent import WebAgentLoop
 
 
-def build_observation(instruction: str, state_dom: str, url: str) -> str:
-    return (
-        "You are a web agent. Read the current page DOM and output ONE atomic action (CLICK/TYPE/NAVIGATE) in a strict schema.\n"
-        f"URL: {url}\nDOM:\n{state_dom}\nInstruction: {instruction}\nAction:"
-    )
-
-
 def run_model_based_ppo(
-    policy_model_name: str,
-    agent_loop: WebAgentLoop,
+    policy_ckpt: str,
+    world_model: WebWorldModel,
+    reward_model: ORMRewardModel,
     instructions: List[str],
     ppo_config: PPOConfig,
+    horizon: int = 10,
     max_new_tokens: int = 64,
 ):
-    # Load model with value head
-    policy = PolicyWithValue(policy_model_name)
-    ref_policy = PolicyWithValue(policy_model_name)  # reference for KL in PPO
+    """Model-based PPO over the **encoded-state** world model.
+
+    Uses the PolicyAgent (WEBRL prompt) to generate actions given (instruction, history, encoded_state).
+    """
+    agent = PolicyAgent(policy_ckpt)
+    ref_agent = PolicyAgent(policy_ckpt)  # reference for KL
 
     ppo_trainer = PPOTrainer(
         config=ppo_config,
-        model=policy.model,
-        ref_model=ref_policy.model,
-        tokenizer=policy.tokenizer,
+        model=agent.model,
+        ref_model=ref_agent.model,
+        tokenizer=agent.tokenizer,
     )
 
-    for epoch in range(ppo_config.ppo_epochs):
+    loop = WebAgentLoop(world=world_model, reward=reward_model, horizon=horizon)
+
+    for _ in range(ppo_config.ppo_epochs):
         queries, responses, rewards = [], [], []
 
         for instr in instructions:
-            # start from an empty synthetic page
-            state = agent_loop.reset(url="https://example.com", dom="<body>Home</body>")
-            for t in range(agent_loop.horizon):
-                obs = build_observation(instr, state.dom, state.url)
-                action_text = policy.act([obs], max_new_tokens=max_new_tokens)[0]
-                step = agent_loop.step(state, instruction=instr, action=action_text)
+            state = loop.reset(instruction=instr)
+            history: List[str] = []
+            for _ in range(horizon):
+                query = _build_user_prompt(instr, history, state)
+                action = agent.act(instr, history, state, max_new_tokens=max_new_tokens)
+                step = loop.step(instr, state, action)
 
-                queries.append(obs)
-                responses.append(action_text)
+                queries.append(query)
+                responses.append(action)
                 rewards.append(step.reward)
+
+                history.append(action)
                 state = step.next_state
                 if step.done:
                     break
 
-        # one PPO update over the collected step-wise data
         ppo_trainer.step(queries, responses, rewards)
 
-    # return the fine-tuned policy in memory; caller can save
-    return policy, ppo_trainer
+    return agent, ppo_trainer

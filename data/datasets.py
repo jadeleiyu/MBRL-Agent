@@ -1,12 +1,9 @@
-from datasets import load_dataset, Dataset
-from typing import Dict, List, Tuple, Optional
+from datasets import load_dataset
 import json
-import os
 import lxml
 
 from dom_utils import get_tree_repr
-from ..prompting import WEBRL_SYSTEM_PROMPT, MIND2WEB_SYSTEM_PROMPT
-
+from ..utils.prompting import WEBRL_SYSTEM_PROMPT, MIND2WEB_SYSTEM_PROMPT
 
 
 def get_gt_element(sample, dom_tree, gt_node_id, id_mapping):
@@ -89,9 +86,6 @@ def prepare_sft_data(webrl_path, mind2web_path):
                     prev_actions += f"Action step {i}: {action_i}\n"
 
     return sft_ds
-
-
-
 
 
 def _load_local_json_like(path: str):
