@@ -7,7 +7,7 @@ from typing import List, Dict, Any
 import json
 import os
 
-from critic import Critic
+from mbrl_agent.world_model.critic import Critic
 
 
 @dataclass

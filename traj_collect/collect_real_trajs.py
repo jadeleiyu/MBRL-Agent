@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from typing import Dict, Any, List, Optional, Callable, Iterable
 import json
 
-from vanilla_policy import VanillaPolicy
-from planner_policy import PlannerPolicy
-from critic import Critic
+from mbrl_agent.agents.vanilla_policy import VanillaPolicy
+from mbrl_agent.agents.planner_policy import PlannerPolicy
+from mbrl_agent.world_model.critic import Critic
 
 # NOTE: We assume a WebArena adapter exists at envs/WebArena with API:
 #   env = WebArenaEnv()

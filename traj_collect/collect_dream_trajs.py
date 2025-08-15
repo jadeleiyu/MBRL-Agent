@@ -3,9 +3,9 @@ from dataclasses import dataclass
 from typing import Dict, Any, List, Optional
 import json
 
-from vanilla_policy import VanillaPolicy, build_user_prompt
-from web_world_model import WebWorldModel
-from critic import Critic
+from mbrl_agent.agents.vanilla_policy import VanillaPolicy, build_user_prompt
+from mbrl_agent.world_model.web_world_model import WebWorldModel
+from mbrl_agent.world_model.critic import Critic
 
 
 @dataclass

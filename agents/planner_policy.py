@@ -7,9 +7,9 @@ from typing import List, Dict, Any, Tuple
 
 import numpy as np
 
-from vanilla_policy import VanillaPolicy
-from web_world_model import WebWorldModel, DeltaPlan
-from critic import Critic
+from mbrl_agent.agents.vanilla_policy import VanillaPolicy
+from mbrl_agent.world_model.web_world_model import WebWorldModel, DeltaPlan
+from mbrl_agent.world_model.critic import Critic
 
 
 @dataclass
