@@ -10,6 +10,7 @@ import numpy as np
 from mbrl_agent.agents.vanilla_policy import VanillaPolicy
 from mbrl_agent.world_model.web_world_model import WebWorldModel, DeltaPlan
 from mbrl_agent.world_model.critic import Critic
+from projects.mbrl_agent.envs.webvoyager_env import enforce_webarena
 
 
 @dataclass
@@ -46,6 +47,7 @@ class PlannerPolicy:
                 temperature=self.cfg.temperature + 0.1 * np.random.randn(),
                 top_p=self.cfg.top_p, max_new_tokens=self.cfg.max_new_tokens
             )
+            a = enforce_webarena(a) or "noop"
             candidates.append(a)
 
         # 2) score via short imagination
@@ -71,6 +73,7 @@ class PlannerPolicy:
                 a_t = self.base.act(instruction, obs_t, hist_t, T=T,
                                     temperature=self.cfg.temperature, top_p=self.cfg.top_p,
                                     max_new_tokens=48)
+                a_t = enforce_webarena(a_t) or "noop"
                 next_obs, _ = self.wm.predict_next(instruction, obs_t, hist_t, a_t)
                 frag.append((obs_t, a_t, next_obs))
                 total += disc * self.critic.score(instruction, frag)
@@ -80,4 +83,4 @@ class PlannerPolicy:
             if total > best_score:
                 best_score = total
                 best_a = a0
-        return best_a
+        return enforce_webarena(best_a) or "noop"
