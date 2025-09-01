@@ -2,7 +2,7 @@ from transformers import AutoModelForCausalLM
 from peft import PeftModel
 
 BASE = "openai/gpt-oss-20b"
-ADAPTER_DIR = "/checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/wm_sft/gpt-oss-20b_webarena_sft_lora_16/"
+ADAPTER_DIR = "/checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/wm_sft/gpt-oss-20b_webarena_-1_sft_lora_16"
 REPO_ID = "jadeleiyu/gpt-oss-20b_WM_webarena_sft_lora_16"
 
 base = AutoModelForCausalLM.from_pretrained(BASE, trust_remote_code=True)
