@@ -2,3 +2,4 @@ archive/
 __pycache__/
 
 test_data.ipynb
+wm_wa_sft.json
