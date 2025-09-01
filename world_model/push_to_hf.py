@@ -16,3 +16,7 @@ peft_model.push_to_hub(REPO_ID, commit_message="Add LoRA adapter")
 # peft_model.push_to_hub(REPO_ID)
 
 
+from datasets import load_dataset
+
+ds = load_dataset("json", data_files={"train": "/home/jadeleiyu/projects/mbrl_agent/world_model/sft_data/wm_wa_sft.json"})
+ds.push_to_hub("jadeleiyu/WM-webarena-sft")

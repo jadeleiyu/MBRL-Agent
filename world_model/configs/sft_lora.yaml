@@ -4,7 +4,7 @@ attn_implementation: eager
 torch_dtype: bfloat16
 
 # Dataset
-dataset_name: /home/jadeleiyu/projects/mbrl_agent/world_model/sft_data/wm_wa_sft.json
+dataset_name: jadeleiyu/WM-webarena-sft
 dataset_num_proc: 12
 
 # Hyperparameters
@@ -29,3 +29,6 @@ seed: 42
 
 # Extra
 n_train_examples: -1
+
+
+

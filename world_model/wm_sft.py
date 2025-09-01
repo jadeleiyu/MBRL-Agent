@@ -1,4 +1,4 @@
-from datasets import Dataset
+from datasets import load_dataset
 import torch
 from transformers import AutoModelForCausalLM, Mxfp4Config
 from transformers import AutoTokenizer
@@ -42,9 +42,10 @@ class ExtraArgs:
 
 def main(script_args, training_args, model_args, extra_args):
 
-    with open(script_args.dataset_name, 'r') as f:
-        dataset = json.load(f)
-    dataset = Dataset.from_list(dataset)
+    # with open(script_args.dataset_name, 'r') as f:
+    #     dataset = json.load(f)
+    # dataset = Dataset.from_list(dataset)
+    dataset = load_dataset(script_args.dataset_name)
     if extra_args.n_train_examples > 0:
         dataset = dataset.select(range(extra_args.n_train_examples))
 
