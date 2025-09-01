@@ -1,70 +1,53 @@
 # ==============================================
 # File: collect_real_trajs.py
 # ==============================================
-from __future__ import annotations
-from dataclasses import dataclass
-from typing import Dict, Any, List, Optional, Callable, Iterable
 import json
 
-from mbrl_agent.agents.vanilla_policy import VanillaPolicy
-from mbrl_agent.agents.planner_policy import PlannerPolicy
-from mbrl_agent.world_model.critic import Critic
+from envs.webvoyager_env import WV_SYSTEM_PROMPT, WV_INIT_USER_PROMPT, WebVoyagerEnv, driver_config
+from agents.vanilla_policy import VanillaPolicy
 
-# NOTE: We assume a WebArena adapter exists at envs/WebArena with API:
-#   env = WebArenaEnv()
-#   obs = env.reset(task: Dict[str,Any]) -> Dict[str,Any]  # {url, acc_tree, title, candidates?, done?}
-#   obs_next, done, info = env.step(action: str)
+def main(args):
 
+    # load the policy model
+    policy = VanillaPolicy(args)
 
-def default_task_builder(i: int) -> Dict[str, Any]:
-    return {"instruction": f"Episode {i}: complete the task.", "url": "https://example.com"}
+    # create web driver options
+    driver_options = driver_config(args)
 
-
-@dataclass
-class CollectConfig:
-    episodes: int = 100
-    horizon: int = 10
-    save_path: str = "./rollouts/real_T1.jsonl"
+    # Load webvoyager tasks
+    tasks = []
+    with open(args.test_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            tasks.append(json.loads(line))
 
 
-class Collector:
-    """Environment interaction loop for collecting **real** trajectories.
+    for task_id in range(len(tasks)):
 
-    Compatible with online PPO: pass a callback to consume transitions as they arrive.
-    """
+        task = tasks[task_id]
+        env = WebVoyagerEnv(driver_options, task, args)
 
-    def __init__(self, env, policy, critic: Optional[Critic] = None, cfg: CollectConfig = CollectConfig()):
-        self.env = env
-        self.policy = policy
-        self.critic = critic
-        self.cfg = cfg
+        ac_tree, obs_info = env.get_webarena_accessibility_tree()
+        messages = [
+            {"role": "system", "content": WV_SYSTEM_PROMPT},
+            {"role": "user", "content": WV_INIT_USER_PROMPT.format(
+                instruction=task['instruction'], web=task['web'], ac_tree=ac_tree
+            )},
+        ]
 
-    def run(self, task_builder: Callable[[int], Dict[str, Any]] = default_task_builder, on_step: Optional[Callable[[Dict[str, Any]], None]] = None):
-        osave = open(self.cfg.save_path, "w", encoding="utf-8")
-        for epi in range(self.cfg.episodes):
-            task = task_builder(epi)
-            instruction = task.get("instruction", "")
-            obs = self.env.reset(task)
-            history: List[Dict[str, Any]] = []
-            steps: List[Dict[str, Any]] = []
-            for t in range(self.cfg.horizon):
-                action = self.policy.act(instruction, obs, history)
-                obs_next, done, info = self.env.step(action)
+        it = 0
+        while it < args.max_iter:
 
-                step = {"observation": obs, "action": action, "next_observation": obs_next, "done": bool(done)}
-                steps.append(step)
+            ac_tree, obs_info = env.get_webarena_accessibility_tree()
+            if it > 0:
+                messages.append(
+                        {
+                        "role": "user", 
+                        "content": f"Please analyze the accessibility tree and give the Thought and Action.\n{ac_tree}"
+                    }
+                )
+            action_text = policy.act(messages)
+            messages.append({'role': 'assistant', 'content': action_text})
 
-                if self.critic is not None and on_step is not None:
-                    # Provide an online label if needed by PPO/GRPO
-                    frag = [(obs, action, obs_next)]
-                    r = self.critic.score(instruction, frag)
-                    on_step({"instruction": instruction, "step": step, "reward": r})
+            env.step(action_text, obs_info)
 
-                history.append({"action": action, "observation": obs_next})
-                obs = obs_next
-                if done:
-                    break
-            episode = {"type": getattr(self.policy, "__class__").__name__, "instruction": instruction, "steps": steps}
-            osave.write(json.dumps(episode) + "\n"); osave.flush()
-        osave.close()
-        return self.cfg.save_path
+
