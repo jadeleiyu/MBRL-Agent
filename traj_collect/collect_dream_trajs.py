@@ -1,128 +1,101 @@
-from __future__ import annotations
-from dataclasses import dataclass
-from typing import Dict, Any, List, Optional
+"""
+python collect_dream_trajs.py --config collect_dream_trajs.yaml
+"""
+import sys
+import os
+import yaml
 import json
+import argparse
+from types import SimpleNamespace
+from tqdm import tqdm
 
-from mbrl_agent.agents.vanilla_policy import VanillaPolicy, build_user_prompt
-from mbrl_agent.world_model.web_world_model import WebWorldModel
-from mbrl_agent.world_model.critic import Critic
+from datasets import load_dataset
 
+sys.path.append('/home/jadeleiyu/projects/mbrl_agent')
+from world_model.web_world_model import WebWorldModel
+from agents.vanilla_policy import VanillaPolicy
 
-@dataclass
-class DreamConfig:
-    """Config for dreamed (world-model) rollout collection.
+def dream_rollout(batch_tasks, agent, world_model, dream_horizon=5):
+    """Offline dreamed web browsing trajectory collection."""
 
-    episodes: number of dreamed episodes to generate when using the offline collector
-    horizon:  maximum dreamed steps per episode
-    save_path: JSONL file to write dreamed episodes (used by DreamCollector.run)
-    """
-    episodes: int = 1000
-    horizon: int = 3
-    save_path: str = "./rollouts/dream_T3.jsonl"
+    batch_dreamed_trajs = []
 
+    for task in batch_tasks:
+        objective = task['messages'][1]['content'].split('\nOBJECTIVE:')[1].split('\nPREVIOUS ACTIONS')[0].strip()
+        task['objective'] = objective
+        obs_0 = task['messages'][1]['content'].split('OBSERVATION:\n')[1].split('\nURL:')[0].strip()
+        batch_dreamed_trajs.append([{
+            'step': 0,
+            'action': 'None',
+            "is_action_valid": True, 
+            "next_observation": obs_0,
+            "wm_cot": 'None'
+        }])
 
-class DreamCollector:
-    """Collect **dreamed** trajectories by rolling the vanilla policy inside the world model.
+    for t in range(dream_horizon):
+        batch_actions, batch_is_valid_act = agent.act(batch_dreamed_trajs, batch_tasks)
+        # if terminated:
+        #     break
+        batch_obs_next, batch_cot = world_model.step(batch_actions, batch_dreamed_trajs, batch_tasks)
+        for i in range(len(batch_actions)):
+            batch_dreamed_trajs[i].append(
+                {
+                    "step": t,
+                    "action": batch_actions[i],
+                    "is_action_valid": batch_is_valid_act[i], 
+                    "next_observation": batch_obs_next[i],
+                    "wm_cot": batch_cot[i]
+                }
+            )
 
-    Produces a JSONL with one episode per line:
-      {"type":"T3", "instruction": str, "steps": [
-          {"observation": obs_t, "action": str, "next_observation": obs_tp1, "delta": {...}, "done": bool}, ...
-      ]}
-    """
-
-    def __init__(self, policy: VanillaPolicy, world: WebWorldModel, cfg: DreamConfig = DreamConfig()):
-        self.policy = policy
-        self.world = world
-        self.cfg = cfg
-
-    def run(self) -> str:
-        """Offline dreamed collection: saves to cfg.save_path and returns the path."""
-        with open(self.cfg.save_path, "w", encoding="utf-8") as f:
-            for epi in range(self.cfg.episodes):
-                instruction = f"Episode {epi}: complete the task."
-                obs = {"url": "https://example.com", "title": "", "acc_tree": "", "candidates": []}
-                history: List[Dict[str, Any]] = []
-                steps: List[Dict[str, Any]] = []
-                for _t in range(self.cfg.horizon):
-                    action = self.policy.act(instruction, obs, history)
-                    obs_next, delta = self.world.predict_next(instruction, obs, history, action)
-                    steps.append(
-                        {
-                            "observation": obs,
-                            "action": action,
-                            "next_observation": obs_next,
-                            "delta": delta.raw_json,
-                            "done": bool(obs_next.get("done", False)),
-                        }
-                    )
-                    history.append({"action": action, "observation": obs_next})
-                    obs = obs_next
-                    if obs.get("done"):
-                        break
-                episode = {"type": "T3", "instruction": instruction, "steps": steps}
-                f.write(json.dumps(episode) + "\n")
-                f.flush()
-        return self.cfg.save_path
+    return batch_dreamed_trajs
 
 
-def _extract_action(text: str) -> str:
-    import re
-    pat = re.compile(r"(do\([^\)]*\)|exit\([^\)]*\)|go_backward\(\)|go_forward\(\))", re.I)
-    m = pat.search(text)
-    return m.group(1) if m else "do(action=\"Wait\")"
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, help="Path to YAML config file")
+    config_args = parser.parse_args()
+
+    with open(config_args.config, "r") as f:
+        args = yaml.safe_load(f)
+    # wrap in SimpleNamespace so you can do args.base_model instead of args["base_model"]
+    args = SimpleNamespace(**args)
+
+    ds = load_dataset(args.dataset, split='train')
+    world_model = WebWorldModel(args)
+    agent = VanillaPolicy(args)
+
+    dreamed_trajs = []
+    if args.n_tasks > 0:
+        n_tasks = args.n_tasks
+    else:
+        n_tasks = len(ds)
+    print(f"number of tasks to dream: {n_tasks}\n")
+    n_batch = int(n_tasks / args.task_batch_size)
+    for i in tqdm(range(n_batch)):
+        start, end = args.task_batch_size * i, args.task_batch_size * (i+1)
+        batch_tasks = [ds[j] for j in range(start, end)]
+        batch_objectives = [
+            task['messages'][1]['content'].split('\nOBJECTIVE:')[1].split('\nPREVIOUS ACTIONS')[0].strip() for task in batch_tasks
+        ]
+        try:
+            batch_dreamed_trajs = dream_rollout(batch_tasks, agent, world_model, dream_horizon=args.dream_horizon)
+            for k in range(len(batch_dreamed_trajs)):
+                dreamed_trajs.append({
+                    'example_id': start+k,
+                    'objective': batch_objectives[k],
+                    'dreamed_trajectory': batch_dreamed_trajs[k]
+                })
+        except Exception as e:
+            # print(f"error when dreaming task {i}: {e}\n")
+            pass
+    
+    wm_name_short, agent_name_short = args.wm_model_name.split('/')[-1], args.agent_model_name.split('/')[-1]
+    save_path = os.path.join(args.output_dir, f"dream_trajs-{wm_name_short}-{agent_name_short}.json")
+    print(f"{len(dreamed_trajs)} out of {n_tasks} tasks have successfully been dreamed")
+    with open(save_path, 'w') as f:
+        json.dump(dreamed_trajs, f)
 
 
-def dream_rollout_for_ppo(
-    policy_tokenizer,
-    policy_model,
-    world: WebWorldModel,
-    instruction: str,
-    horizon: int,
-    max_new_tokens: int = 64,
-    critic: Optional[Critic] = None,
-) -> List[Dict[str, Any]]:
-    """Generate a single dreamed episode using the **current PPO policy model**.
-
-    Returns a list of PPO-ready steps with keys: {prompt, action, reward, next_obs}.
-    - `prompt` is the exact user prompt shown to the policy for this step
-    - `action` is the one-line web action extracted from the model output
-    - `reward` is optional (0.0 if no critic provided)
-    - `next_obs` is the dreamed next observation from the world model
-    """
-    obs = {"url": "https://example.com", "title": "", "acc_tree": "", "candidates": []}
-    history: List[Dict[str, Any]] = []
-    steps: List[Dict[str, Any]] = []
-
-    for _t in range(horizon):
-        prompt = build_user_prompt(instruction, obs, history)
-        inputs = policy_tokenizer.apply_chat_template(
-            [
-                {"role": "system", "content": "You are a web agent."},
-                {"role": "user", "content": prompt},
-            ],
-            add_generation_prompt=True,
-            return_tensors="pt",
-        ).to(policy_model.pretrained_model.device)
-        out = policy_model.generate(
-            inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=True,
-            temperature=0.3,
-            top_p=0.9,
-            eos_token_id=policy_tokenizer.eos_token_id,
-        )
-        raw = policy_tokenizer.decode(out[0][inputs.shape[-1]:], skip_special_tokens=True)
-        action = _extract_action(raw)
-
-        obs_next, _delta = world.predict_next(instruction, obs, history, action)
-        reward = 0.0
-        if critic is not None:
-            reward = float(critic.score(instruction, [(obs, action, obs_next)]))
-
-        steps.append({"prompt": prompt, "action": action, "reward": reward, "next_obs": obs_next})
-        history.append({"action": action, "observation": obs_next})
-        obs = obs_next
-        if bool(obs.get("done", False)):
-            break
-
-    return steps
+if __name__ == "__main__":
+    main()

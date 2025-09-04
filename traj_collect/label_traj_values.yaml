@@ -1,0 +1,15 @@
+dreamed_traj_path: /home/jadeleiyu/projects/mbrl_agent/traj_collect/traj_results/dream_trajs-gpt-oss-20b_webarena_-1_sft_lora_16_merged-gpt-oss-20b_nnetnav-wa_10000_sft_lora_16_merged.json
+n_tasks: -1
+output_dir: /home/jadeleiyu/projects/mbrl_agent/traj_collect/traj_results/
+torch_dtype: bfloat16
+dream_horizon: 5
+tensor_parallel_size: 8
+
+critic_model_name: /checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/critic/Meta-Llama-3.1-8B-Instruct-value-model-16k-qlora-adapter-v2_merged
+agent_model_name: /checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/agent_sft/gpt-oss-20b_nnetnav-wa_10000_sft_lora_16_merged
+wm_model_name: /checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/wm_sft/gpt-oss-20b_webarena_-1_sft_lora_16_merged
+
+temperature: 1.0
+top_p: 0.9
+max_obs_length: 4096
+max_new_tokens: 4096

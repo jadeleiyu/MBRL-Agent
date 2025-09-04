@@ -1,0 +1,23 @@
+env_type: dream
+dataset: stanfordnlp/nnetnav-wa
+n_tasks: 2000
+output_dir: /home/jadeleiyu/projects/mbrl_agent/traj_collect/traj_results/
+torch_dtype: bfloat16
+dream_horizon: 3
+task_batch_size: 16
+
+agent_model_name: /checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/agent_sft/gpt-oss-20b_nnetnav-wa_10000_sft_lora_16_merged
+agent_tensor_parallel_size: 4
+gpu_idx_agent: 0,1,2,3
+agent_max_new_tokens: 4096
+agent_prompt_path: /home/jadeleiyu/projects/mbrl_agent/agents/prompts/p_cot_id_actree_2s.json
+
+wm_model_name: /checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/wm_sft/gpt-oss-20b_webarena_-1_sft_lora_16_merged
+wm_tensor_parallel_size: 4
+gpu_idx_wm: 4,5,6,7
+wm_max_new_tokens: 4096
+
+temperature: 1.0
+top_p: 0.9
+max_obs_length: 4096
+

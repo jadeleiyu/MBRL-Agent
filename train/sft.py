@@ -36,14 +36,15 @@ accelerate launch \
 
 @dataclass
 class ExtraArgs:
-    n_train_examples: int = 2000
+    n_train_examples: int = 10000
 
 
 def main(script_args, training_args, model_args, extra_args):
 
     dataset = load_dataset(script_args.dataset_name, split="train")
     dataset = dataset.remove_columns(['prompt', 'output'])
-    dataset = dataset.select(range(extra_args.n_train_examples))
+    if extra_args.n_train_examples > 0:
+        dataset = dataset.select(range(extra_args.n_train_examples))
 
     quantization_config = Mxfp4Config(dequantize=True)
     model_kwargs = dict(

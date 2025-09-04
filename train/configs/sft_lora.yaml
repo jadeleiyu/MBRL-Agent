@@ -24,8 +24,8 @@ warmup_ratio: 0.03
 lr_scheduler_type: cosine_with_min_lr
 lr_scheduler_kwargs:
   min_lr_rate: 0.1
-output_dir: /checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent
+output_dir: /checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/agent_sft/
 seed: 42
 
 # Extra
-n_train_examples: 10000
+n_train_examples: -1

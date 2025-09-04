@@ -3,222 +3,131 @@
 # ==============================================
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import List, Dict, Any, Tuple, Optional
-import json
-import re
+import os
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 
+os.environ["VLLM_CONFIGURE_LOGGING"] = "0"   # set this *before* importing vllm
+os.environ["VLLM_LOGGING_LEVEL"]    = "WARNING"  # or "ERROR"
+from vllm import LLM, SamplingParams
+
 # This world model works over **accessibility tree** observations.
 # It predicts small **delta edits** first, then applies them to form the next observation.
 
+WM_SYS_PROMPT = """You are an intelligent agent that predicts next state from given current action in a web environment, with your own logical reasoning. 
 
-# ---------------------- delta representation ----------------------
-@dataclass
-class DeltaPlan:
-    """A structured set of edits to apply to the current observation.
+Here's the information you'll have:
+The user's objective: This is the task you're trying to complete.
+The current web page's accessibility tree: This is a simplified representation of the webpage, providing key information.
+The current web page's URL: This is the page you're currently navigating.
+The previous action: This is the action you just performed in the previous step. It may be helpful to track your progress. 
+The current action: This is the current action that you performed to achieve the user's objective in the current web page's accessibility tree.
+The format of previous actions can fall into several categories:
+Page Operation Actions:
 
-    Supported ops: UPDATE_TEXT, UPDATE_ATTR, ADD_CANDIDATE, REMOVE_CANDIDATE, NAVIGATE, DONE
-    """
-    raw_json: Dict[str, Any]
+```click [id]```: This action clicks on an element with a specific id on the webpage.
+```type [id] [content]```: Use this to type the content into the field with id. By default, the 'Enter' key is pressed after typing unless press_enter_after is set to 0, i.e., ```type [id] [content] [0]```.
+```hover [id]```: Hover over an element with id.
+```press [key_comb]```: Simulates the pressing of a key combination on the keyboard (e.g., Ctrl+v).
+```scroll [down]``` or ```scroll [up]```: Scroll the page up or down.
 
+Tab Management Actions:
+```new_tab```: Open a new, empty browser tab.
+```tab_focus [tab_index]```: Switch the browser's focus to a specific tab using its index.
+```close_tab```: Close the currently active tab.
 
-# ---------------------- world model ----------------------
-@dataclass
-class WMConfig:
-    base_model: str = "meta-llama/Meta-Llama-3.1-8B-Instruct"
-    adapter: Optional[str] = "LangAGI-Lab/Meta-Llama-3.1-8B-Instruct-WM-webarena-16k-adapter"
-    device_map: str = "auto"
-    torch_dtype = torch.bfloat16
-    max_new_tokens: int = 512
-    max_obs_chars: int = 10000
+URL Navigation Actions:
+```goto [url]```: Navigate to a specific URL.
+```go_back```: Navigate to the previously viewed page.
+```go_forward```: Navigate to the next page (if a previous 'go_back' action was performed)
 
+Completion Action:
+```stop [answer]```: Done when you believe the task is complete.
 
-DELTA_SCHEMA = (
-    "Return STRICT JSON with key 'edits' (list) and optional 'reason' and 'done'.\n"
-    "Each edit is one of:\n"
-    "- {\"op\":\"UPDATE_TEXT\", \"id\":str, \"text\":str}\n"
-    "- {\"op\":\"UPDATE_ATTR\", \"id\":str, \"attrs\":{...}}\n"
-    "- {\"op\":\"ADD_CANDIDATE\", \"candidate\":{id, role, text, selector, ...}}\n"
-    "- {\"op\":\"REMOVE_CANDIDATE\", \"id\":str}\n"
-    "- {\"op\":\"NAVIGATE\", \"url\":str, \"title\":str}\n"
-    "- {\"op\":\"DONE\", \"message\":str}\n"
-)
+Follow the following rules for reasoning on next state prediction.
+1. Please generate your answer starting with Let's think step by step, with your logical REASONING.
+2. When you generate your logical reasoning, you must identify and mention only the changed parts of the [accessibility tree] for the next state based on the given current action. 
+3. And then, you must generate a complete accessibility tree of the next web page based on the changed parts you identified.
+4. Generate the next web page accessibility tree prediction in the correct format. Start with a "[Next State] The expected next web page accessibility tree is:" phrase.
+"""
 
-
-def _truncate_obs(obs: Dict[str, Any], max_chars: int) -> Dict[str, Any]:
-    acc = (obs.get("acc_tree", "") or "")
-    if len(acc) > max_chars:
-        acc = acc[:max_chars]
-    out = dict(obs)
-    out["acc_tree"] = acc
-    # cap candidates list length
-    cands = out.get("candidates") or []
-    out["candidates"] = cands[:60]
-    return out
-
-
-def _safe_json(text: str) -> Dict[str, Any]:
-    try:
-        m = re.search(r"\{[\s\S]*\}", text)
-        return json.loads(m.group(0)) if m else {}
-    except Exception:
-        return {}
+WM_USR_PROMPT_TEMPLATE = """User objective: {usr_obj}
+Current web page accessibility tree: {curr_acc_tree}
+Current web page URL: {curr_url}
+Previous action: {prev_action}
+Current action: {curr_action}
+"""
 
 
 class WebWorldModel:
-    """LLM-based world model that predicts **delta edits** then the **next observation**.
-
+    """LLM-based world model that predicts next web page observation.
     Input: instruction, current observation (accessibility tree), and recent history.
     Output: next observation (accessibility tree dict) and the raw DeltaPlan.
     """
 
-    def __init__(self, cfg: WMConfig = WMConfig()):
-        self.cfg = cfg
-        self.tokenizer = AutoTokenizer.from_pretrained(cfg.base_model, use_fast=True)
-        base = AutoModelForCausalLM.from_pretrained(cfg.base_model, device_map=cfg.device_map, torch_dtype=cfg.torch_dtype)
-        self.model = PeftModel.from_pretrained(base, cfg.adapter) if cfg.adapter else base
-        self.model.eval()
-
-    @torch.inference_mode()
-    def predict_next(self, instruction: str, observation: Dict[str, Any], history: List[Dict[str, Any]], action: str) -> Tuple[Dict[str, Any], DeltaPlan]:
-        cur = _truncate_obs(observation, self.cfg.max_obs_chars)
-        hist_txt = []
-        for i, h in enumerate(history[-5:]):
-            hist_txt.append(f"a[{i}]={h.get('action','')}")
-            hist_txt.append(f"o[{i}]={(h.get('observation',{}).get('acc_tree','') or '')[:1000]}")
-        system = (
-            "You are a WEB WORLD MODEL.\n"
-            "Given the current accessibility tree and a single user action, predict a compact set of **edits** that update the state.\n"
-            + DELTA_SCHEMA +
-            "Only output JSON."
+    def __init__(self, args):
+        self.tokenizer = AutoTokenizer.from_pretrained(args.wm_model_name)
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_idx_wm
+        self.lm = LLM(
+            model=args.wm_model_name, 
+            trust_remote_code=True,
+            tensor_parallel_size=args.wm_tensor_parallel_size,
+            dtype=args.torch_dtype,
         )
-        user = (
-            f"Instruction: {instruction}\n"
-            f"URL: {cur.get('url','')}  Title: {cur.get('title','')}\n"
-            f"Current Accessibility Tree:\n{cur.get('acc_tree','')}\n\n"
-            f"Recent History:\n{chr(10).join(hist_txt)}\n\n"
-            f"Action: {action}\n"
-            "Return JSON now."
+        self.sampling_params = SamplingParams(
+            max_tokens=args.wm_max_new_tokens,
+            temperature=args.temperature,
+            top_p=args.top_p
         )
-        inputs = self.tokenizer.apply_chat_template(
-            [{"role":"system","content":system},{"role":"user","content":user}],
-            add_generation_prompt=True, return_tensors="pt"
-        ).to(self.model.device)
-        out = self.model.generate(inputs, max_new_tokens=self.cfg.max_new_tokens, do_sample=False,
-                                  temperature=0.0, eos_token_id=self.tokenizer.eos_token_id)
-        text = self.tokenizer.decode(out[0][inputs.shape[-1]:], skip_special_tokens=True)
-        j = _safe_json(text)
-        delta = DeltaPlan(raw_json=j)
-        next_obs = self.apply_edits(cur, delta)
-        return next_obs, delta
+        self.sys_prompt = WM_SYS_PROMPT
+        self.user_prompt_template = WM_USR_PROMPT_TEMPLATE
+        self.answer_parse_pattern_cot = "[Rationale]\n"
+        self.answer_parse_pattern_obs = "The expected next web page accessibility tree is:"
 
-    # -------------------- editing engine --------------------
-    def apply_edits(self, obs: Dict[str, Any], delta: DeltaPlan, max_add: int = 10, max_cands: int = 60) -> Dict[str, Any]:
-        state = json.loads(json.dumps(obs))  # deep copy
-        id2c = {c.get("id"): c for c in (state.get("candidates") or []) if c.get("id")}
-        added, removed, changed = set(), set(), set()
-        edits = delta.raw_json.get("edits", []) if isinstance(delta.raw_json, dict) else []
-        adds = 0
-        for e in edits:
-            op = (e.get("op") or "").upper()
-            if op == "UPDATE_TEXT":
-                cid = e.get("id"); txt = e.get("text", "")
-                if cid in id2c:
-                    id2c[cid]["text"] = txt
-                    changed.add(cid)
-            elif op == "UPDATE_ATTR":
-                cid = e.get("id"); attrs = e.get("attrs", {})
-                if cid in id2c and isinstance(attrs, dict):
-                    id2c[cid].setdefault("attrs", {}).update(attrs)
-                    changed.add(cid)
-            elif op == "ADD_CANDIDATE" and adds < max_add:
-                cand = e.get("candidate", {})
-                if isinstance(cand, dict) and cand.get("id") and cand.get("text") is not None:
-                    state.setdefault("candidates", []).append(cand)
-                    id2c[cand["id"]] = cand
-                    added.add(cand["id"]); adds += 1
-            elif op == "REMOVE_CANDIDATE":
-                cid = e.get("id")
-                if cid in id2c:
-                    state["candidates"] = [c for c in state["candidates"] if c.get("id") != cid]
-                    id2c.pop(cid, None)
-                    removed.add(cid)
-            elif op == "NAVIGATE":
-                state["url"] = e.get("url", state.get("url", ""))
-                state["title"] = e.get("title", state.get("title", ""))
-            elif op == "DONE":
-                state["done"] = True
-        state["candidates"] = (state.get("candidates") or [])[:max_cands]
-        state["diff"] = {"added": sorted(list(added)), "removed": sorted(list(removed)), "changed": sorted(list(changed))}
-        return state
+    # wm_output = world_model.step(action, dreamed_traj, task)
+    def step(self, batch_actions, batch_dreamed_trajs, tasks):
+        batch_input_prompts = []
+        for action, dreamed_traj, task in zip(batch_actions, batch_dreamed_trajs, tasks):
+            prev_action = dreamed_traj[-1]['action']
+            messages = [
+                {'role':'system', 'content': self.sys_prompt},
+                {'role': 'user', 'content': self.user_prompt_template.format(
+                    usr_obj=task['objective'],
+                    curr_acc_tree=dreamed_traj[-1]['next_observation'],
+                    curr_url='None',
+                    prev_action=prev_action,
+                    curr_action=action
+                )},
+            ]
+            prompt = self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,  # adds the assistant turn to complete
+            )
+            batch_input_prompts.append(prompt)
 
+        outputs = self.lm.generate(
+            batch_input_prompts,
+            sampling_params=self.sampling_params,
+            use_tqdm=False
+        )
+        batch_cot, batch_next_obs = [], []
+        for out in outputs:
+            response = out.outputs[0].text
+            cot, next_obs = self.parse_output(response)
+            batch_cot.append(cot)
+            batch_next_obs.append(next_obs)
 
-# ---------------------- training ----------------------
-@dataclass
-class WMTrainConfig:
-    lr: float = 5e-6
-    batch_size: int = 4
-    gradient_accumulation_steps: int = 2
-    epochs: int = 1
-    bf16: bool = True
+        return batch_cot, batch_next_obs
+    
+    def parse_output(self, response):
+        try:
+            cot_and_obs = response.split(self.answer_parse_pattern_cot)[-1]
+            cot, obs = cot_and_obs.split(self.answer_parse_pattern_obs)
+            return cot, obs
+        except Exception as e:
+            return "None", "None"
 
-
-def build_wm_training_example(instruction: str, obs_t: Dict[str, Any], action_t: str, obs_tp1: Dict[str, Any]) -> Dict[str, Any]:
-    prompt = (
-        "You are a WEB WORLD MODEL. "
-        "Predict a compact set of edits to transform the CURRENT accessibility tree into the NEXT one.\n\n"
-        + DELTA_SCHEMA + "\n" +
-        f"Instruction: {instruction}\n\n"
-        f"CURRENT:\nURL: {obs_t.get('url','')}\nTitle: {obs_t.get('title','')}\n{obs_t.get('acc_tree','')[:8000]}\n\n"
-        f"Action: {action_t}\n\n"
-        f"TARGET_NEXT:\nURL: {obs_tp1.get('url','')}\nTitle: {obs_tp1.get('title','')}\n{obs_tp1.get('acc_tree','')[:8000]}\n\n"
-        "Return the JSON edits that would produce TARGET_NEXT when applied to CURRENT."
-    )
-    return {"prompt": prompt}
-
-
-def train_world_model(dataset: List[Dict[str, Any]], cfg: WMTrainConfig, model: WebWorldModel):
-    """SFT-style training: teacher-forcing on (obs_t, action_t → delta edits for obs_{t+1}).
-
-    dataset: list of {instruction, obs_t, action_t, obs_tp1}
-    """
-    from transformers import Trainer, TrainingArguments
-
-    texts = []
-    for row in dataset:
-        ex = build_wm_training_example(row["instruction"], row["obs_t"], row["action_t"], row["obs_tp1"]) 
-        # We expect the target to be a JSON edits block; for SFT we concatenate prompt + gold JSON
-        tgt_json = json.dumps(row.get("delta") or {"edits": []}, ensure_ascii=False)
-        texts.append(ex["prompt"] + tgt_json)
-
-    class _Ds(torch.utils.data.Dataset):
-        def __init__(self, xs): self.xs = xs
-        def __len__(self): return len(self.xs)
-        def __getitem__(self, i): return {"text": self.xs[i]}
-
-    ds = _Ds(texts)
-    tok = model.tokenizer
-
-    def collate(batch):
-        toks = tok([b["text"] for b in batch], return_tensors="pt", padding=True, truncation=True)
-        toks["labels"] = toks["input_ids"].clone()
-        return toks
-
-    args = TrainingArguments(
-        output_dir="./wm-sft",
-        learning_rate=cfg.lr,
-        per_device_train_batch_size=cfg.batch_size,
-        gradient_accumulation_steps=cfg.gradient_accumulation_steps,
-        num_train_epochs=cfg.epochs,
-        bf16=cfg.bf16,
-        save_total_limit=2,
-        logging_steps=50,
-    )
-
-    base = model.model
-    trainer = Trainer(model=base, args=args, train_dataset=ds, data_collator=collate)
-    trainer.train()
-    trainer.save_model("./wm-sft")
+        

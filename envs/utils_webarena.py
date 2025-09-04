@@ -387,3 +387,6 @@ def clean_accesibility_tree(tree_str: str) -> str:
             clean_lines.append(line)
 
     return "\n".join(clean_lines)
+
+
+

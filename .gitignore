@@ -1,4 +1,5 @@
 archive/
 __pycache__/
 
-test_data.ipynb
+*.ipynb
+*.json
