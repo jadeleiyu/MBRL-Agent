@@ -20,20 +20,17 @@ This repo provides a clean, modular scaffold to train LLM-based **web agents** w
 ```
 agents/
     vanilla_policy.py       # Vanilla policy (LLM + value head) → one-line action
-    planner_policy.py       # Planner wrapper (K candidates, d-step world model, critic scoring)
+    planner_policy.py       # Planner-CoT-based policy (K candidates, d-step world model, critic scoring, TBD)
 world_model/
-    web_world_model.py      # LLM world model (delta edits → next observation) + SFT trainer
-    critic.py               # Critic (sequence regression) + trainer predicting discounted returns
+    web_world_model.py      # LLM world model that predicts next web page accessibility tree
+    critic.py               # Critic that predicts value/advantage of (partial) trajectory
 traj_collect/
-    collect_real_trajs.py   # Sandbox loop (T1/T2 collection); PPO-friendly callback hook
-    collect_dream_trajs.py  # Dreamed T3 generator + PPO dreamed rollout helper
-    traj_processing.py      # Compute per-step return/advantage with critic
+    collect_real_trajs.py   # Sandbox loop (T1/T2 collection); PPO-friendly callback hook (TBD)
+    collect_dream_trajs.py  # Collecting agent - world model interaction trajectories
+    traj_processing.py      # Compute per-step return/advantage with critic (TBD)
 train/
     awr.py                  # Advantage-Weighted Regression (off-policy) training
     ppo.py                  # PPO training from env, world-model dreams, or replay (TRL)
-envs/
-  WebArena/             # your adapter to WebArena’s sandbox (not included)
-  WebVoyager/           # optional live web env adapter (not included)
 ```
 
 ---

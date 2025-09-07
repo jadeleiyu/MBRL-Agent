@@ -4,7 +4,8 @@ attn_implementation: eager
 torch_dtype: bfloat16
 
 # Dataset
-dataset_name: jadeleiyu/WM-webarena-sft
+dataset_name: jadeleiyu/WM-live-sft
+ds_name_short: live
 dataset_num_proc: 12
 
 # Hyperparameters

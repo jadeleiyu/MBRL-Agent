@@ -18,21 +18,16 @@ from dataclasses import dataclass
 
 """
 accelerate launch \
-    --config_file configs/zero3.yaml \
+    --config_file configs/zero3_gpt.yaml \
     wm_sft.py \
-    --config configs/sft_lora.yaml \
-    --model_name_or_path openai/gpt-oss-20b \
+    --config configs/sft_lora_gpt.yaml \
     --packing true packing_strategy wrapped \
-    --run_name gpt-oss-20b-wm-wa-lora \
     --attn_implementation kernels-community/vllm-flash-attn3
 
 accelerate launch \
+    --config_file configs/zero3_llama.yaml \
     wm_sft.py \
-    --config configs/sft_lora.yaml \
-    --model_name_or_path openai/gpt-oss-20b \
-    --packing true packing_strategy wrapped \
-    --run_name gpt-oss-20b-wm-wa-lora \
-    --attn_implementation kernels-community/vllm-flash-attn3
+    --config configs/sft_lora_llama.yaml 
 """
 
 @dataclass
@@ -45,7 +40,7 @@ def main(script_args, training_args, model_args, extra_args):
     # with open(script_args.dataset_name, 'r') as f:
     #     dataset = json.load(f)
     # dataset = Dataset.from_list(dataset)
-    dataset = load_dataset(script_args.dataset_name)
+    dataset = load_dataset(script_args.dataset_name)['train']
     if extra_args.n_train_examples > 0:
         dataset = dataset.select(range(extra_args.n_train_examples))
 
@@ -66,7 +61,7 @@ def main(script_args, training_args, model_args, extra_args):
         model_args.model_name_or_path,
     )
     
-    model_name_short, ds_name_short = model_args.model_name_or_path.split('/')[-1], 'webarena'
+    model_name_short, ds_name_short = model_args.model_name_or_path.split('/')[-1], script_args.dataset_name.split('/')[-1]
     output_dir = os.path.join(training_args.output_dir, f"{model_name_short}_{ds_name_short}_{extra_args.n_train_examples}_sft_lora_{model_args.lora_r}")
     training_args.output_dir = output_dir
     os.makedirs(output_dir, exist_ok=True)
@@ -85,16 +80,16 @@ def main(script_args, training_args, model_args, extra_args):
     trainer.save_model(training_args.output_dir)  # saves LoRA adapter if PEFT is used
     tokenizer.save_pretrained(training_args.output_dir)
 
-    merge_dir = os.path.join(training_args.output_dir, "merged")
-    os.makedirs(merge_dir, exist_ok=True)
+    # merge_dir = os.path.join(training_args.output_dir, "merged")
+    # os.makedirs(merge_dir, exist_ok=True)
 
-    if isinstance(trainer.model, PeftModel):
-        merged = trainer.model.merge_and_unload()  # bakes LoRA into base weights
-        merged.save_pretrained(merge_dir, safe_serialization=True)
-        tokenizer.save_pretrained(merge_dir)
-        print(f"Merged model saved to: {merge_dir}")
-    else:
-        print("No PEFT/LoRA attached; nothing to merge.")
+    # if isinstance(trainer.model, PeftModel):
+    #     merged = trainer.model.merge_and_unload()  # bakes LoRA into base weights
+    #     merged.save_pretrained(merge_dir, safe_serialization=True)
+    #     tokenizer.save_pretrained(merge_dir)
+    #     print(f"Merged model saved to: {merge_dir}")
+    # else:
+    #     print("No PEFT/LoRA attached; nothing to merge.")
     # if training_args.push_to_hub:
     #     trainer.push_to_hub(dataset_name=script_args.dataset_name)
 

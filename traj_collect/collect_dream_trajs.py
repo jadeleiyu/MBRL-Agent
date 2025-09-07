@@ -1,5 +1,5 @@
 """
-python collect_dream_trajs.py --config collect_dream_trajs.yaml
+python collect_dream_trajs.py --config configs/collect_dream_trajs.yaml
 """
 import sys
 import os
@@ -36,11 +36,11 @@ def dream_rollout(batch_tasks, agent, world_model, dream_horizon=5):
         batch_actions, batch_is_valid_act = agent.act(batch_dreamed_trajs, batch_tasks)
         # if terminated:
         #     break
-        batch_obs_next, batch_cot = world_model.step(batch_actions, batch_dreamed_trajs, batch_tasks)
+        batch_cot, batch_obs_next = world_model.step(batch_actions, batch_dreamed_trajs, batch_tasks)
         for i in range(len(batch_actions)):
             batch_dreamed_trajs[i].append(
                 {
-                    "step": t,
+                    "step": t+1,
                     "action": batch_actions[i],
                     "is_action_valid": batch_is_valid_act[i], 
                     "next_observation": batch_obs_next[i],
@@ -61,24 +61,28 @@ def main():
     # wrap in SimpleNamespace so you can do args.base_model instead of args["base_model"]
     args = SimpleNamespace(**args)
 
-    ds = load_dataset(args.dataset, split='train')
+    ds = load_dataset(f"stanfordnlp/nnetnav-{args.env}", split='train')
     world_model = WebWorldModel(args)
     agent = VanillaPolicy(args)
 
     dreamed_trajs = []
-    if args.n_tasks > 0:
-        n_tasks = args.n_tasks
-    else:
-        n_tasks = len(ds)
+    n_tasks = args.task_end - args.task_start
+
+    print('*'*20)
+    print(f"web environment: {args.env}")
     print(f"number of tasks to dream: {n_tasks}\n")
-    n_batch = int(n_tasks / args.task_batch_size)
+    print('*'*20)
+
+    n_batch = int(n_tasks / args.task_batch_size) + 1
     for i in tqdm(range(n_batch)):
-        start, end = args.task_batch_size * i, args.task_batch_size * (i+1)
-        batch_tasks = [ds[j] for j in range(start, end)]
-        batch_objectives = [
-            task['messages'][1]['content'].split('\nOBJECTIVE:')[1].split('\nPREVIOUS ACTIONS')[0].strip() for task in batch_tasks
-        ]
         try:
+            start = args.task_start + args.task_batch_size * i
+            end = min(start + args.task_batch_size, len(ds)-1)
+            
+            batch_tasks = [ds[j] for j in range(start, end)]
+            batch_objectives = [
+                task['messages'][1]['content'].split('\nOBJECTIVE:')[1].split('\nPREVIOUS ACTIONS')[0].strip() for task in batch_tasks
+            ]
             batch_dreamed_trajs = dream_rollout(batch_tasks, agent, world_model, dream_horizon=args.dream_horizon)
             for k in range(len(batch_dreamed_trajs)):
                 dreamed_trajs.append({
@@ -91,7 +95,7 @@ def main():
             pass
     
     wm_name_short, agent_name_short = args.wm_model_name.split('/')[-1], args.agent_model_name.split('/')[-1]
-    save_path = os.path.join(args.output_dir, f"dream_trajs-{wm_name_short}-{agent_name_short}.json")
+    save_path = os.path.join(args.output_dir, f"dream_trajs_{args.dream_horizon}-{wm_name_short}-{agent_name_short}-{args.env}-{args.task_start}-{args.task_end}.json")
     print(f"{len(dreamed_trajs)} out of {n_tasks} tasks have successfully been dreamed")
     with open(save_path, 'w') as f:
         json.dump(dreamed_trajs, f)
@@ -99,3 +103,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

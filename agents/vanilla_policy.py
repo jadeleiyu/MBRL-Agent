@@ -24,13 +24,14 @@ class VanillaPolicy:
     def __init__(self, args):
 
         os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_idx_agent 
+        agent_model_name = f"{args.agent_model_name}-{args.env}"
         self.model = LLM(
-            model=args.agent_model_name,
+            model=agent_model_name,
             trust_remote_code=True,
             tensor_parallel_size=args.agent_tensor_parallel_size,
             dtype=args.torch_dtype,
         )
-        tokenizer = AutoTokenizer.from_pretrained(args.agent_model_name)
+        tokenizer = AutoTokenizer.from_pretrained(agent_model_name)
         self.sampling_params = SamplingParams(
             temperature=args.temperature,
             top_p=args.top_p,

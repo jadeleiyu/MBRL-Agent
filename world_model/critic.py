@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 import json
 import os
+import re
+from typing import Optional
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -63,6 +65,95 @@ NEXT STATE PREDICTION: {next_state_pred}
 ASSISTANT_PROMPT_WM_SFT = """[Rationale]\n{rationale}\n\n[Next State]\nThe expected next web page accessibility tree is:\n\n{next_acc_tree}"""
 
 
+# Primary labeled patterns (same idea as before)
+PRIMARY = [
+    re.compile(r'(?is)\bscore\b[^0-9%]{0,10}\[?\s*(?P<val>[01](?:[.,]\d+)?|\.\d+)\s*(?:%|\s*/\s*1(?:\.0+)?)?\s*\]?', re.I),
+    re.compile(r'(?is)"score"\s*:\s*(?P<val>[01](?:[.,]\d+)?|\.\d+)\b'),
+    re.compile(r'(?is)\b(final|overall|aggregate)\b[^0-9%]{0,20}\bscore\b[^0-9%]{0,10}(?P<val>[01](?:[.,]\d+)?|\.\d+)\b'),
+    re.compile(r'(?is)\bscore\b[^0-9%]{0,10}(?P<pct>\d{1,3}(?:[.,]\d+)?)\s*%'),
+    re.compile(r'(?is)\bscore\b[^0-9%]{0,10}(?P<frac>[01](?:[.,]\d+)?|\.\d+)\s*/\s*1(?:\.0+)?'),
+]
+
+KEYWORDS = re.compile(r'\b(score|final|overall|aggregate|rating)\b', re.I)
+
+def _to_float(s: str) -> float:
+    s = s.strip().rstrip('.,)]}')
+    s = s.replace(',', '.')
+    if s.startswith('.'):
+        s = '0' + s
+    return float(s)
+
+def _near_keyword(text: str, idx: int, window: int = 40) -> bool:
+    a = max(0, idx - window)
+    b = min(len(text), idx + window)
+    return bool(KEYWORDS.search(text[a:b]))
+
+def _fallback_single_float(text: str) -> Optional[float]:
+    cands = []  # (value, start_idx)
+
+    # Percentages like "82%" (normalize to 0.82)
+    for m in re.finditer(r'(?is)\b(\d{1,3}(?:[.,]\d+)?)\s*%', text):
+        v = _to_float(m.group(1)) / 100.0
+        if 0.0 <= v <= 1.0:
+            cands.append((v, m.start()))
+
+    # Fractions like "82/100", "8/10", "0.82/1"
+    for m in re.finditer(r'(?is)\b(\d{1,3}(?:[.,]\d+)?)\s*/\s*(100|10|1(?:\.0+)?)\b', text):
+        num = _to_float(m.group(1))
+        den = float(m.group(2).replace('.0', '')) if '.' in m.group(2) else float(m.group(2))
+        if den != 0:
+            v = num / den
+            if 0.0 <= v <= 1.0:
+                cands.append((v, m.start()))
+
+    # Plain decimals like "0.82" or ".82" or "1.0"
+    for m in re.finditer(r'(?<!\d)(?:0?\.\d+|1(?:\.0+)?)\b', text):
+        # Heuristic: skip list items like "1." at line starts
+        line_start = text.rfind('\n', 0, m.start()) + 1
+        if m.group(0) in ('1.', '1') and re.match(r'^\s*\d+\.\s', text[line_start:m.start()+2]):
+            continue
+        v = _to_float(m.group(0))
+        if 0.0 <= v <= 1.0:
+            cands.append((v, m.start()))
+
+    if not cands:
+        # Last-ditch: any number near the word "score"
+        m = re.search(r'(?is)\bscore\b.{0,40}?([01](?:[.,]\d+)?|\.\d+)\b', text)
+        if m:
+            return max(0.0, min(1.0, _to_float(m.group(1))))
+        return None
+
+    # If they all collapse to one numeric value, return it
+    uniq = {}
+    for v, i in cands:
+        uniq.setdefault(round(v, 6), []).append(i)
+    if len(uniq) == 1:
+        return list(uniq.keys())[0]
+
+    # Otherwise, prefer candidates near "score/final/overall"
+    scored = []
+    for v, i in cands:
+        near = _near_keyword(text, i)
+        scored.append((1 if near else 0, len(text) - i, v))  # near first, then latest
+    scored.sort()
+    chosen = scored[-1][2]
+    return max(0.0, min(1.0, chosen))
+
+
+def extract_judge_score(text: str) -> Optional[float]:
+    # 1) Try primary labeled patterns
+    for pat in PRIMARY:
+        for m in pat.finditer(text):
+            gd = m.groupdict()
+            if 'pct' in gd and gd['pct']:
+                return max(0.0, min(1.0, _to_float(gd['pct']) / 100.0))
+            if 'frac' in gd and gd['frac']:
+                return max(0.0, min(1.0, _to_float(gd['frac'])))
+            if 'val' in gd and gd['val']:
+                return max(0.0, min(1.0, _to_float(gd['val'])))
+    # 2) Fallback tolerant scan
+    return _fallback_single_float(text)
+
 class Critic:
 
     def __init__(self, args):
@@ -91,11 +182,15 @@ class Critic:
             score = float(score.strip())
             return score
         except Exception as e:
-            print('error in parsing critic score')
-            print(cot_and_score.split(self.answer_parse_pattern_score))
-            print('\n\n')
-            # print(f'output parsing error: {e} \n')
-            return -1.
+            try:
+                score = extract_judge_score(output_text)
+                return score
+            except Exception as e:
+                print('error in parsing critic score')
+                print(f"critic output text: {output_text}")
+                print('\n\n')
+                # print(f'output parsing error: {e} \n')
+                return -1.
 
 
     def score(self, dreamed_traj, objective):

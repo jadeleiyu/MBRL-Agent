@@ -2,13 +2,13 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 import torch, os
 
-# BASE = "openai/gpt-oss-20b"                     # HF id or local path of your base
-# ADAPTER_DIR = "/checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/agent_sft/gpt-oss-20b_nnetnav-wa_10000_sft_lora_16" # folder with adapter_config.json + adapter_model.safetensors
-# OUT = "/checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/agent_sft/gpt-oss-20b_nnetnav-wa_10000_sft_lora_16_merged"
+BASE = "openai/gpt-oss-20b"                     # HF id or local path of your base
+ADAPTER_DIR = "/checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/wm_sft/gpt-oss-20b_WM-live-sft_-1_sft_lora_16" # folder with adapter_config.json + adapter_model.safetensors
+OUT = "/checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/wm_sft/gpt-oss-20b_live"
 
-BASE = "meta-llama/Meta-Llama-3.1-8B-Instruct"
-ADAPTER_DIR = "LangAGI-Lab/Meta-Llama-3.1-8B-Instruct-value-model-16k-qlora-adapter-v2" 
-OUT = "/checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/critic/Meta-Llama-3.1-8B-Instruct-value-model-16k-qlora-adapter-v2_merged"
+# BASE = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+# ADAPTER_DIR = "LangAGI-Lab/Meta-Llama-3.1-8B-Instruct-value-model-16k-qlora-adapter-v2" 
+# OUT = "/checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/critic/Meta-Llama-3.1-8B-Instruct-value-model-16k-qlora-adapter-v2_merged"
 
 os.makedirs(OUT, exist_ok=True)
 

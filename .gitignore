@@ -2,4 +2,5 @@ archive/
 __pycache__/
 
 *.ipynb
-*.json
+traj_results/
+sft_data/

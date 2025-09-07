@@ -5,9 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel
+from transformers import AutoTokenizer
 
 os.environ["VLLM_CONFIGURE_LOGGING"] = "0"   # set this *before* importing vllm
 os.environ["VLLM_LOGGING_LEVEL"]    = "WARNING"  # or "ERROR"
@@ -68,10 +66,11 @@ class WebWorldModel:
     """
 
     def __init__(self, args):
-        self.tokenizer = AutoTokenizer.from_pretrained(args.wm_model_name)
+        wm_model_name = os.path.join(args.model_dir, 'wm_sft', f"{args.wm_model_name}_{args.env}")
+        self.tokenizer = AutoTokenizer.from_pretrained(wm_model_name)
         os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_idx_wm
         self.lm = LLM(
-            model=args.wm_model_name, 
+            model=wm_model_name, 
             trust_remote_code=True,
             tensor_parallel_size=args.wm_tensor_parallel_size,
             dtype=args.torch_dtype,

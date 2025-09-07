@@ -2,7 +2,7 @@ dreamed_traj_path: /home/jadeleiyu/projects/mbrl_agent/traj_collect/traj_results
 n_tasks: -1
 output_dir: /home/jadeleiyu/projects/mbrl_agent/traj_collect/traj_results/
 torch_dtype: bfloat16
-dream_horizon: 5
+dream_horizon: 3
 tensor_parallel_size: 8
 
 critic_model_name: /checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/critic/Meta-Llama-3.1-8B-Instruct-value-model-16k-qlora-adapter-v2_merged

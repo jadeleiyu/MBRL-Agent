@@ -9,9 +9,11 @@ import sys
 sys.path.append('/home/jadeleiyu/projects/mbrl_agent')
 from world_model.critic import Critic
 
+
 """
 python label_traj_values.py --config label_traj_values.yaml
 """
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -30,7 +32,7 @@ def main():
     for i in tqdm(range(len(dreamed_trajs))):
         dreamed_traj, objective = dreamed_trajs[i]['dreamed_trajectory'], dreamed_trajs[i]['objective'] 
         critic_values = critic.score(dreamed_traj, objective)
-        print(f"critic values for dreamed trajectory {i}: {critic_values}\n")
+        # print(f"critic values for dreamed trajectory {i}: {critic_values}\n")
         for j in range(len(dreamed_traj)):
             dreamed_trajs[i]['dreamed_trajectory'][j]['critic_value'] = critic_values[j]
     
