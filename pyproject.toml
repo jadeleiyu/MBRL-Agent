@@ -1,0 +1,25 @@
+[project]
+name = "mbrl"
+version = "0.1.0"
+description = "A simple implementation of a model-based RL webagent project."
+requires-python = ">=3.10"
+dependencies = [
+    "transformers>=4.42.0",
+    "accelerate>=0.33.0",
+    "peft>=0.11.1",
+    "trl>=0.9.4",
+    "datasets>=2.19.0",
+    "bitsandbytes>=0.43.1",
+    "huggingface_hub>=0.23.0",
+    "scikit-learn",
+    "numpy",
+    "pandas",
+    "rich",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+utils = [
+    "jsonlines",
+    "orjson",
+]

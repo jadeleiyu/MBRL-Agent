@@ -5,9 +5,7 @@ import yaml
 from tqdm import tqdm
 from types import SimpleNamespace
 
-import sys
-sys.path.append('/home/jadeleiyu/projects/mbrl_agent')
-from world_model.critic import Critic
+from mbrl import Critic
 
 
 """

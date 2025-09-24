@@ -1,7 +1,7 @@
 """
 python collect_dream_trajs.py --config configs/collect_dream_trajs.yaml
 """
-import sys
+
 import os
 import yaml
 import json
@@ -11,9 +11,9 @@ from tqdm import tqdm
 
 from datasets import load_dataset
 
-sys.path.append('/home/jadeleiyu/projects/mbrl_agent')
-from world_model.web_world_model import WebWorldModel
-from agents.vanilla_policy import VanillaPolicy
+from mbrl import WebWorldModel
+from mbrl import VanillaPolicy
+
 
 def dream_rollout(batch_tasks, agent, world_model, dream_horizon=5):
     """Offline dreamed web browsing trajectory collection."""

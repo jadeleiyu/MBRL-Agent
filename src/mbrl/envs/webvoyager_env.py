@@ -10,7 +10,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 
-from utils_webarena import fetch_browser_info, fetch_page_accessibility_tree,\
+from .utils_webarena import fetch_browser_info, fetch_page_accessibility_tree,\
                     parse_accessibility_tree, clean_accesibility_tree
 
 

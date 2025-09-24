@@ -3,8 +3,8 @@
 # ==============================================
 import json
 
-from envs.webvoyager_env import WV_SYSTEM_PROMPT, WV_INIT_USER_PROMPT, WebVoyagerEnv, driver_config
-from agents.vanilla_policy import VanillaPolicy
+from mbrl.envs.webvoyager_env import WV_SYSTEM_PROMPT, WV_INIT_USER_PROMPT, WebVoyagerEnv, driver_config
+from mbrl import VanillaPolicy
 
 def main(args):
 

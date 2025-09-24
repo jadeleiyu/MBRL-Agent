@@ -4,8 +4,8 @@ env_type: dream
 
 # dataset: stanfordnlp/nnetnav-wa
 task_start: 0
-task_end: 10000
-output_dir: /home/jadeleiyu/projects/mbrl_agent/traj_collect/traj_results/
+task_end: 32
+output_dir: /home/mila/c/caomeng/MBRL-Agent/traj_collect/traj_results/
 torch_dtype: bfloat16
 dream_horizon: 1
 task_batch_size: 32
@@ -14,15 +14,15 @@ model_dir: /checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/
 
 # agent_model_name: gpt-oss-20b
 agent_model_name: stanfordnlp/llama8b-nnetnav
-agent_tensor_parallel_size: 4
-gpu_idx_agent: 0,1,2,3
+agent_tensor_parallel_size: 2
+gpu_idx_agent: 0,1
 agent_max_new_tokens: 4096
-agent_prompt_path: /home/jadeleiyu/projects/mbrl_agent/agents/prompts/p_cot_id_actree_2s.json
+agent_prompt_path: /home/mila/c/caomeng/MBRL-Agent/src/mbrl/agents/prompts/p_cot_id_actree_2s.json
 
 # wm_model_name: gpt-oss-20b
 wm_model_name: gpt-oss-20b
-wm_tensor_parallel_size: 4
-gpu_idx_wm: 4,5,6,7
+wm_tensor_parallel_size: 2
+gpu_idx_wm: 2,3
 wm_max_new_tokens: 4096
 
 temperature: 1.0

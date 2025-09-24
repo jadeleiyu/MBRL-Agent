@@ -7,10 +7,10 @@ import torch
 from transformers import AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer
 
-from mbrl_agent.world_model.critic import Critic
-from mbrl_agent.agents.vanilla_policy import build_user_prompt
-from mbrl_agent.world_model.web_world_model import WebWorldModel
-from mbrl_agent.traj_collect.collect_dream_trajs import dream_rollout_for_ppo
+from mbrl.world_model.critic import Critic
+from mbrl.agents.vanilla_policy import build_user_prompt
+from mbrl.world_model.web_world_model import WebWorldModel
+from mbrl.traj_collect.collect_dream_trajs import dream_rollout_for_ppo
 
 
 @dataclass

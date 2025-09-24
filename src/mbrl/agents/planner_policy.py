@@ -7,10 +7,10 @@ from typing import List, Dict, Any, Tuple
 
 import numpy as np
 
-from mbrl_agent.agents.vanilla_policy import VanillaPolicy
-from mbrl_agent.world_model.web_world_model import WebWorldModel, DeltaPlan
-from mbrl_agent.world_model.critic import Critic
-from projects.mbrl_agent.envs.webvoyager_env import enforce_webarena
+from mbrl.agents.vanilla_policy import VanillaPolicy
+from mbrl.world_model.web_world_model import WebWorldModel
+from mbrl.world_model.critic import Critic
+from mbrl.envs.webvoyager_env import enforce_webarena
 
 
 @dataclass

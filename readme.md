@@ -18,19 +18,19 @@ This repo provides a clean, modular scaffold to train LLM-based **web agents** w
 ## File layout
 
 ```
-agents/
-    vanilla_policy.py       # Vanilla policy (LLM + value head) → one-line action
-    planner_policy.py       # Planner-CoT-based policy (K candidates, d-step world model, critic scoring, TBD)
-world_model/
-    web_world_model.py      # LLM world model that predicts next web page accessibility tree
-    critic.py               # Critic that predicts value/advantage of (partial) trajectory
-traj_collect/
-    collect_real_trajs.py   # Sandbox loop (T1/T2 collection); PPO-friendly callback hook (TBD)
-    collect_dream_trajs.py  # Collecting agent - world model interaction trajectories
-    traj_processing.py      # Compute per-step return/advantage with critic (TBD)
-train/
-    awr.py                  # Advantage-Weighted Regression (off-policy) training
-    ppo.py                  # PPO training from env, world-model dreams, or replay (TRL)
+MBRL-AGENT/
+├── src/
+│   └── mbrl/
+│       ├── agents/
+│       ├── envs/
+│       ├── world_model/
+│       └── __init__.py
+├── train/
+├── traj_collect/
+├── .gitattributes
+├── .gitignore
+├── pyproject.toml
+└── readme.md
 ```
 
 ---
@@ -39,11 +39,23 @@ train/
 
 **Python:** 3.10+
 
-**Install deps:**
+To install the project in the virtual environment, navigate to the root directory (where pyproject.toml is located) and run:
+
+```bash
+pip install .
+```
+
+To install in editable mode, use the -e flag:
+
+```bash
+pip install -e .
+```
+
+<!-- **Install deps:**
 
 ```bash
 pip install torch transformers trl peft accelerate scikit-learn
-```
+``` -->
 
 > Use a CUDA build of PyTorch and BF16-capable GPUs for best performance.
 

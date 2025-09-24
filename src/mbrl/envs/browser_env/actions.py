@@ -8,8 +8,7 @@ import re
 import string
 from enum import IntEnum
 from itertools import chain
-from typing import Any, TypedDict, Union, cast
-import json
+from typing import Any, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -21,9 +20,7 @@ from playwright.async_api import Locator as ALocator
 from playwright.async_api import Page as APage
 from playwright.sync_api import BrowserContext, Locator, Page
 
-import sys
-sys.path.append('/home/jadeleiyu/projects/mbrl_agent')
-from envs.browser_env.constants import (
+from mbrl.envs.browser_env.constants import (
     ASCII_CHARSET,
     FREQ_UNICODE_CHARSET,
     MAX_ANSWER_LENGTH,
@@ -42,7 +39,7 @@ from envs.browser_env.constants import (
     URL_MAX_LENGTH,
     RolesType,
 )
-from envs.browser_env.processors import ObservationProcessor
+from mbrl.envs.browser_env.processors import ObservationProcessor
 
 
 class ParsedPlaywrightCode(TypedDict):
@@ -51,7 +48,7 @@ class ParsedPlaywrightCode(TypedDict):
     keywords: dict[str, Any]
 
 
-from envs.browser_env.processors import (
+from mbrl.envs.browser_env.processors import (
     ObservationProcessor,
     TextObervationProcessor,
 )

@@ -6,8 +6,12 @@ import time
 import logging
 import numpy as np
 from PIL import Image
-from utils_webarena import fetch_browser_info, fetch_page_accessibility_tree,\
-                    parse_accessibility_tree, clean_accesibility_tree
+from .utils_webarena import (
+    fetch_browser_info,
+    fetch_page_accessibility_tree,
+    parse_accessibility_tree,
+    clean_accesibility_tree,
+)
 
 
 def resize_image(image_path):

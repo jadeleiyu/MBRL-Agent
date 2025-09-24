@@ -8,10 +8,8 @@ os.environ["VLLM_CONFIGURE_LOGGING"] = "0"   # set this *before* importing vllm
 os.environ["VLLM_LOGGING_LEVEL"]    = "WARNING"  # or "ERROR"
 from vllm import LLM, SamplingParams
 
-import sys
-sys.path.append('/home/jadeleiyu/projects/mbrl_agent')
-from agents.prompt_constructor import CoTPromptConstructor
-from envs.browser_env.actions import (
+from mbrl.agents.prompt_constructor import CoTPromptConstructor
+from mbrl.envs.browser_env.actions import (
     ActionParsingError,
     create_id_based_action,
 )
@@ -24,7 +22,7 @@ class VanillaPolicy:
     def __init__(self, args):
 
         os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_idx_agent 
-        agent_model_name = f"{args.agent_model_name}-{args.env}"
+        agent_model_name = "meta-llama/Llama-3.1-8B-Instruct"
         self.model = LLM(
             model=agent_model_name,
             trust_remote_code=True,

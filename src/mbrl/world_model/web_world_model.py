@@ -66,14 +66,15 @@ class WebWorldModel:
     """
 
     def __init__(self, args):
-        wm_model_name = os.path.join(args.model_dir, 'wm_sft', f"{args.wm_model_name}_{args.env}")
+        wm_model_name = "/home/mila/c/caomeng/scratch/mbrl_agent/wma_agent/merged"
+        wm_model_name = "/home/mila/c/caomeng/scratch/mbrl_agent/wm_sft/gpt-oss-20b_WM_webarena_sft_lora_16/merged"
+        wm_model_name = "openai/gpt-oss-20b"
         self.tokenizer = AutoTokenizer.from_pretrained(wm_model_name)
         os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_idx_wm
         self.lm = LLM(
             model=wm_model_name, 
             trust_remote_code=True,
             tensor_parallel_size=args.wm_tensor_parallel_size,
-            dtype=args.torch_dtype,
         )
         self.sampling_params = SamplingParams(
             max_tokens=args.wm_max_new_tokens,
