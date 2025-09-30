@@ -4,12 +4,14 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import os
+import subprocess
+import random
 
+from openai import OpenAI
 from transformers import AutoTokenizer
 
-os.environ["VLLM_CONFIGURE_LOGGING"] = "0"   # set this *before* importing vllm
-os.environ["VLLM_LOGGING_LEVEL"]    = "WARNING"  # or "ERROR"
-from vllm import LLM, SamplingParams
+# os.environ["VLLM_CONFIGURE_LOGGING"] = "0"   # set this *before* importing vllm
+# os.environ["VLLM_LOGGING_LEVEL"]    = "WARNING"  # or "ERROR"
 
 # This world model works over **accessibility tree** observations.
 # It predicts small **delta edits** first, then applies them to form the next observation.
@@ -44,11 +46,19 @@ URL Navigation Actions:
 Completion Action:
 ```stop [answer]```: Done when you believe the task is complete.
 
-Follow the following rules for reasoning on next state prediction.
-1. Please generate your answer starting with Let's think step by step, with your logical REASONING.
-2. When you generate your logical reasoning, you must identify and mention only the changed parts of the [accessibility tree] for the next state based on the given current action. 
-3. And then, you must generate a complete accessibility tree of the next web page based on the changed parts you identified.
-4. Generate the next web page accessibility tree prediction in the correct format. Start with a "[Next State] The expected next web page accessibility tree is:" phrase.
+Given the information above, you should first perform reasoning to predict expected changes on the current web page's accessibility tree,
+and then generate the resulting next web page's accessibility tree based on your predicted web page changes.
+Generate your answer in the following format: 
+[Web state changes]
+changes
+
+[Next page accessibility tree]
+next_acc_tree
+
+where ``changes`` are the predicted web page changes, and ``next_acc_tree`` is your predicted next page accessibility tree.
+For next_acc_tree, you MUST generate a valid accessibility tree based on your predicted changes, do NOT output summary descriptions of how the next_acc_tree will change.
+If the full predicted next_acc_tree is too long, you should output a pruned tree by removing unimportant elements that the web agent will unlikely use in subsequent action steps.
+Meanwhile, you should NOT omit key unchanged elements that the web agent might interact with in future time steps.
 """
 
 WM_USR_PROMPT_TEMPLATE = """User objective: {usr_obj}
@@ -66,28 +76,27 @@ class WebWorldModel:
     """
 
     def __init__(self, args):
-        wm_model_name = os.path.join(args.model_dir, 'wm_sft', f"{args.wm_model_name}_{args.env}")
-        self.tokenizer = AutoTokenizer.from_pretrained(wm_model_name)
-        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_idx_wm
-        self.lm = LLM(
-            model=wm_model_name, 
-            trust_remote_code=True,
-            tensor_parallel_size=args.wm_tensor_parallel_size,
-            dtype=args.torch_dtype,
-        )
-        self.sampling_params = SamplingParams(
-            max_tokens=args.wm_max_new_tokens,
-            temperature=args.temperature,
-            top_p=args.top_p
-        )
+        self.wm_model_name = args.wm_model_name
+        self.tokenizer = AutoTokenizer.from_pretrained(self.wm_model_name)
+        self.vllm_urls = args.vllm_urls
+        self.clients = []
+        for vllm_url in self.vllm_urls:
+            client = OpenAI(
+                api_key="web_world_model", # just a place holder
+                base_url=vllm_url,
+            )
+            self.clients.append(client)
+        self.max_new_tokens = args.wm_max_new_tokens
+        self.temperature = args.temperature
+        self.top_p = args.top_p
         self.sys_prompt = WM_SYS_PROMPT
         self.user_prompt_template = WM_USR_PROMPT_TEMPLATE
-        self.answer_parse_pattern_cot = "[Rationale]\n"
-        self.answer_parse_pattern_obs = "The expected next web page accessibility tree is:"
+        self.answer_parse_pattern_cot = "Web state changes\n"
+        self.answer_parse_pattern_obs = "Next page accessibility tree"
 
     # wm_output = world_model.step(action, dreamed_traj, task)
     def step(self, batch_actions, batch_dreamed_trajs, tasks):
-        batch_input_prompts = []
+        batch_inputs = []
         for action, dreamed_traj, task in zip(batch_actions, batch_dreamed_trajs, tasks):
             prev_action = dreamed_traj[-1]['action']
             messages = [
@@ -105,27 +114,32 @@ class WebWorldModel:
                 tokenize=False,
                 add_generation_prompt=True,  # adds the assistant turn to complete
             )
-            batch_input_prompts.append(prompt)
+            batch_inputs.append(prompt)
 
-        outputs = self.lm.generate(
-            batch_input_prompts,
-            sampling_params=self.sampling_params,
-            use_tqdm=False
+        client = random.choice(self.clients)
+        batch_outputs = client.completions.create(
+            model=self.wm_model_name,
+            prompt=batch_inputs,   
+            max_tokens=self.max_new_tokens,
+            temperature=self.temperature,
+            top_p=self.top_p
         )
-        batch_cot, batch_next_obs = [], []
-        for out in outputs:
-            response = out.outputs[0].text
-            cot, next_obs = self.parse_output(response)
-            batch_cot.append(cot)
+        
+        batch_delta, batch_next_obs = [], []
+        for choice in batch_outputs.choices:
+            response = choice.text
+            delta, next_obs = self.parse_output(response)
+            batch_delta.append(delta)
             batch_next_obs.append(next_obs)
 
-        return batch_cot, batch_next_obs
+        return batch_delta, batch_next_obs
     
     def parse_output(self, response):
         try:
-            cot_and_obs = response.split(self.answer_parse_pattern_cot)[-1]
-            cot, obs = cot_and_obs.split(self.answer_parse_pattern_obs)
-            return cot, obs
+            model_answer = response.split("assistantfinal")[-1]
+            delta_and_obs = model_answer.split(self.answer_parse_pattern_cot)[-1]
+            delta, obs = delta_and_obs.split(self.answer_parse_pattern_obs)
+            return delta.strip(), obs.strip()
         except Exception as e:
             return "None", "None"
 

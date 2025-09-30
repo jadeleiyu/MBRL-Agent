@@ -8,9 +8,7 @@ import numpy.typing as npt
 from gymnasium import spaces
 from playwright.sync_api import CDPSession, Page, ViewportSize
 
-import sys
-sys.path.append('/home/jadeleiyu/projects/mbrl_agent')
-from envs.browser_env.constants import (
+from .constants import (
     ASCII_CHARSET,
     FREQ_UNICODE_CHARSET,
     IGNORED_ACTREE_PROPERTIES,

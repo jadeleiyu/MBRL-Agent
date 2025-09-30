@@ -158,11 +158,11 @@ class Critic:
 
     def __init__(self, args):
         self.tokenizer = AutoTokenizer.from_pretrained(args.critic_model_name)
-
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_idx_critic
         self.lm = LLM(
             model=args.critic_model_name, 
             trust_remote_code=True,
-            tensor_parallel_size=args.tensor_parallel_size,
+            tensor_parallel_size=args.critic_tensor_parallel_size,
             dtype=args.torch_dtype
         )
         self.sampling_params = SamplingParams(

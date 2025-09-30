@@ -1,6 +1,11 @@
 archive/
 __pycache__/
 
-*.ipynb
+notebooks/
 traj_results/
+
+logs/
+train/
+
+sample_outputs/
 sft_data/

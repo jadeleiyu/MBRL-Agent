@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: mbrl_agent
+Version: 0.1.0
+Summary: Model-based RL agent
+Requires-Python: >=3.9

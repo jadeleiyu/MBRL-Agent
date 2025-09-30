@@ -1,6 +1,6 @@
 # Model
-model_name_or_path: openai/gpt-oss-20b
-attn_implementation: eager
+model_name_or_path: unsloth/gpt-oss-120b-BF16
+attn_implementation: flash_attention_2
 torch_dtype: bfloat16
 
 # Dataset
@@ -13,13 +13,14 @@ learning_rate: 2.0e-4
 gradient_checkpointing: true
 num_train_epochs: 1.0
 logging_steps: 1
-per_device_train_batch_size: 2
-gradient_accumulation_steps: 4
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
 use_peft: true
-lora_r: 16
+lora_r: 8
 lora_alpha: 16
 lora_dropout: 0.0
 lora_target_modules: all-linear
+# lora_target_modules: [q_proj, k_proj, v_proj, o_proj]
 max_length: 4096
 warmup_ratio: 0.03
 lr_scheduler_type: cosine_with_min_lr

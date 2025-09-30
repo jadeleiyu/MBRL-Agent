@@ -2,22 +2,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 import torch, os
 
-# BASE = "openai/gpt-oss-20b"                     # HF id or local path of your base
-# ADAPTER_DIR = "/checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/wm_sft/gpt-oss-20b_WM-live-sft_-1_sft_lora_16" # folder with adapter_config.json + adapter_model.safetensors
-# OUT = "/checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/wm_sft/gpt-oss-20b_live"
-
-# BASE = "meta-llama/Meta-Llama-3.1-8B-Instruct"
-# ADAPTER_DIR = "LangAGI-Lab/Meta-Llama-3.1-8B-Instruct-value-model-16k-qlora-adapter-v2" 
-# OUT = "/checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/critic/Meta-Llama-3.1-8B-Instruct-value-model-16k-qlora-adapter-v2_merged"
-
 
 BASE = "unsloth/gpt-oss-120b-BF16"   
 MODEL_DIR = "/checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/wm_sft/"
-env = 'live'
 
-adapter_path = os.path.join(MODEL_DIR, f"gpt-oss-120b-{env}-lf")
-merged_path = os.path.join(MODEL_DIR, f"gpt-oss-120b-{env}-lf-merged")
-
+adapter_path = os.path.join(MODEL_DIR, f"gpt-oss-120b-llamafactory/checkpoint-500")
+merged_path = os.path.join(MODEL_DIR, f"gpt-oss-120b-llamafactory-merged-500")
 os.makedirs(merged_path, exist_ok=True)
 
 # 1) Load base in full precision (no 4-bit) so weights can be merged
@@ -38,7 +28,6 @@ model.save_pretrained(merged_path, safe_serialization=True)  # writes model.safe
 tok.save_pretrained(merged_path)
 
 print(f"Merged model saved to: {merged_path}")
-
 
 
 

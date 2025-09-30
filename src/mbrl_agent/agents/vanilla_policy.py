@@ -8,13 +8,12 @@ os.environ["VLLM_CONFIGURE_LOGGING"] = "0"   # set this *before* importing vllm
 os.environ["VLLM_LOGGING_LEVEL"]    = "WARNING"  # or "ERROR"
 from vllm import LLM, SamplingParams
 
-import sys
-sys.path.append('/home/jadeleiyu/projects/mbrl_agent')
-from agents.prompt_constructor import CoTPromptConstructor
-from envs.browser_env.actions import (
+from mbrl_agent.agents.prompt_constructor import CoTPromptConstructor
+from mbrl_agent.envs.browser_env.actions import (
     ActionParsingError,
     create_id_based_action,
 )
+
 
 class VanillaPolicy:
     """
@@ -23,7 +22,6 @@ class VanillaPolicy:
 
     def __init__(self, args):
 
-        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_idx_agent 
         agent_model_name = f"{args.agent_model_name}-{args.env}"
         self.model = LLM(
             model=agent_model_name,
@@ -43,35 +41,40 @@ class VanillaPolicy:
         self.env_type = args.env_type # "dream", "real"
 
 
-    def act(self, batch_dreamed_trajs, batch_tasks):
+    def act(self, batch_trajs, batch_tasks):
         batch_input_text = []
-        for i in range(len(batch_dreamed_trajs)):
+        for i in range(len(batch_trajs)):
             input_text = self.prompt_constructor.construct(
-                trajectory=batch_dreamed_trajs[i], intent=batch_tasks[i]['objective']
+                trajectory=batch_trajs[i], intent=batch_tasks[i]['objective']
             )
             batch_input_text.append(input_text)
         batch_outputs = self.model.generate(
             batch_input_text, self.sampling_params, use_tqdm=False
         )
-            
-        if self.env_type == 'dream':
-            batch_actions, batch_is_valild_act = [], []
-            for out in batch_outputs:
+        
+        batch_actions, batch_is_valild_act, batch_responses = [], [], []
+        for out in batch_outputs:
+            if self.env_type == 'dream':
                 try:
                     action = self.prompt_constructor._extract_action(out.outputs[0].text)
                     batch_is_valild_act.append(True)
                     batch_actions.append(action)
+                    batch_responses.append(out.outputs[0].text)
                 except ActionParsingError as e:
                     batch_actions.append(out.outputs[0].text)
                     batch_is_valild_act.append(False)
-            return batch_actions, batch_is_valild_act
-        else:
-            action_text = batch_outputs[0].outputs[0].text
-            parsed_response = self.prompt_constructor.extract_action(
-                action_text
-            )
-            action = create_id_based_action(parsed_response)
-            return action
+                    batch_responses.append(out.outputs[0].text)
+                
+            else:
+                action_text = batch_outputs[0].outputs[0].text
+                parsed_response = self.prompt_constructor.extract_action(
+                    action_text
+                )
+                action = create_id_based_action(parsed_response)
+                batch_actions.append(action)
+                batch_responses.append(action_text)
+                
+        return batch_responses, batch_actions, batch_is_valild_act
     
     def is_stop_act(self, action):
         return re.search(r"stop ?\[(.+)\]", action)

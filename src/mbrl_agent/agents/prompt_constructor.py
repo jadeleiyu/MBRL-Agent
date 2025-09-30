@@ -3,9 +3,7 @@ import re
 from pathlib import Path
 from typing import Any, TypedDict
 
-import sys
-sys.path.append('/home/jadeleiyu/projects/mbrl_agent')
-from envs.browser_env import Action, ActionParsingError, Trajectory
+from mbrl_agent.envs.browser_env import Action, ActionParsingError, Trajectory
 
 # from envs.browser_env.env_config import URL_MAPPINGS
 URL_MAPPINGS = {}

@@ -1,0 +1,3 @@
+cwd: /home/jadeleiyu/projects/mbrl_agent/traj_collect
+conda_env_name: mbrl_agent
+conda_path: /home/jadeleiyu/miniforge3
