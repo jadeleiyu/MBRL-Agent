@@ -3,10 +3,7 @@ import os
 import datetime
 import argparse
 import yaml
-
-# import sys
-# sys.path.append(os.getcwd()) 
-# from utils import paths_to_models
+import subprocess
 
 class Trainer:
     def __init__(self, output_dir, config, SCRIPT):
@@ -82,6 +79,46 @@ def get_run_output_dir(model_key):
     return log_output_dir
 
 
+def get_vllm_servers(model_name_pattern):
+    # Run squeue and capture output
+    result = subprocess.run(['squeue', '--me', '-o', '"%j, %N, %T, %i"'], capture_output=True, text=True)
+    lines = sorted(result.stdout.strip().split('\n'))
+
+    # initialize server dict
+    # server_dict = {}
+    server_urls = []
+    
+    # Iterate over each line, skipping the header
+    for line in lines[1:]:
+        line = line.strip('\"')
+        # Get job name, nodelist, and status
+        job_name, nodelist, status, job_id = line.split(', ')
+        if model_name_pattern in job_name:
+
+            assert "[" not in nodelist, "Multi-node servers not currently supported."
+
+            # keep only running jobs
+            if status == "RUNNING" and job_name != "bash":
+
+                try: 
+                    if len(job_name.split(":")) < 2:
+                        model_name = job_name
+                        port = "8000"
+                    else:
+                        model_name = job_name.split(":")[0]
+                        port = job_name.split(":")[1]  # Extract the port number from the job name
+
+                    # model_path = model_paths[model_name]
+                    server_address = f"http://{nodelist}:{port}/v1"
+                    server_urls.append(server_address)
+
+                except KeyError:
+                    continue
+
+    return sorted(server_urls)
+
+
+
 if __name__ == "__main__":
 
     args = parse_args()
@@ -99,7 +136,7 @@ if __name__ == "__main__":
 
     # Set parameters for the job
     SCRIPT = f"""vllm serve {MODEL} --port {args.port} --host 0.0.0.0 \
---tensor-parallel-size {args.n_gpu_per_model} --max_model_len 32768 \
+--tensor-parallel-size {args.n_gpu_per_model} --max_model_len 50000 \
 --download-dir={model_download_dir}"""
 
     # Set up the executor
@@ -121,3 +158,4 @@ if __name__ == "__main__":
     print(f'Output directory: {log_output_dir}')
 
 
+# squeue -u $USER -o "%.18i %.50j" | grep "gpt-oss" | awk '{print $1}' | xargs scancel

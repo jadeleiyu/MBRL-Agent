@@ -14,6 +14,9 @@ from datasets import load_dataset
 
 from mbrl_agent.world_model.web_world_model import WebWorldModel
 from mbrl_agent.agents.vanilla_policy import VanillaPolicy
+from serve_vllm_models import get_vllm_servers
+
+os.environ["HF_HUB_CACHE"] = "/checkpoint/multimodal-reasoning/jadeleiyu/huggingface"
 
 def get_vllm_servers(model_name_pattern):
     # Run squeue and capture output
@@ -52,8 +55,6 @@ def get_vllm_servers(model_name_pattern):
                     continue
 
     return sorted(server_urls)
-
-
 
 
 def dream_rollout(batch_tasks, agent, world_model, dream_horizon=5):

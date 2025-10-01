@@ -1,5 +1,5 @@
 # ==============================================
-# File: critic.py
+# File: value.py
 # ==============================================
 from __future__ import annotations
 from dataclasses import dataclass
@@ -8,28 +8,27 @@ import json
 import os
 import re
 from typing import Optional
+import random
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel
-from vllm import LLM, SamplingParams
+from transformers import AutoTokenizer
+from openai import OpenAI
 
 
 SYS_PROMPT_CRITIC = """You are an expert in evaluating and guiding a web navigation agent. Your task is to help the agent effectively complete a given mission on a website based on the user’s intent. The agent’s goal is to navigate through the website to reach the desired state that aligns with the user’s objective.
 
-You will analyze the agent's prediction about the next state of the webpage after each action and determine whether the agent is successfully progressing towards the task goal. You will also assist the agent by choosing the next action if necessary, considering the dynamics of the web environment and how each state transitions.
+You will analyze the agent's prediction about the next state of the webpage after each action and determine whether the agent is successfully progressing towards the task goal. 
 
 Key Points:
 1. Understand the intent:
-- Identify the user’s goal (e.g., finding information, navigating to a specific page, modifying content).
-- Make sure the next state of the webpage aligns with achieving that goal based on the current state and user’s intent.
+- Identify the user's goal (e.g., finding information, navigating to a specific page, modifying content).
+- Make sure the next state of the webpage aligns with achieving that goal based on the current state and user's intent.
 
 2. Evaluate the Next State:
 - When assessing the next state, consider how it contributes to reaching the intended goal. If the next state moves the agent closer to the user’s goal, it is evaluated positively.
 - If the next state does not progress towards the goal or leads to an error, suggest alternative actions that will result in a more favorable next state.
 
 3. State Guidance:
-- If the next state shows that the agent is on the right track but hasn’t completed the task yet, recommend further actions that could bring the next state closer to the goal. Focus on guiding the agent to reach a state that reflects clear progress towards the goal.
+- If the next state shows that the agent is on the right track but hasn't completed the task yet, recommend further actions that could bring the next state closer to the goal. Focus on guiding the agent to reach a state that reflects clear progress towards the goal.
 
 4. Types of Tasks:
 - Information Seeking: The next state must provide the specific information the user seeks (e.g., product price, reviews). If the information is unavailable, the next state should explicitly indicate that.
@@ -41,18 +40,18 @@ Key Points:
 - Repetitive typing actions: Ensure that the next state does not show corrupted input due to repeated typing.
 - Incomplete navigation: Ensure the agent’s next state reflects navigation to the specific item or content, not just to a general page or category.
 
-Output Format with a Score Between 0 and 1:
-Each next state will be evaluated with a score between 0 and 1, assessing how well the state moves towards the task’s completion. This score provides nuanced feedback on the state’s effectiveness.
-0: The next state is a failure or leads away from the task.
-Values closer to 0 (e.g., 0.1, 0.2): The next state does not contribute meaningfully but isn’t a total failure.
-0.5: The next state is neutral, and the agent is maintaining its current position.
+Output Format with a Score Between -1 and 1:
+Each next state will be evaluated with a score between -1 and 1, assessing how well the state moves towards the task’s completion. This score provides nuanced feedback on the state’s effectiveness.
+-1: The next state is a failure or leads away from the task.
+Values closer to -1 (e.g., -0.9, -0.8): The next state does not contribute meaningfully but isn’t a total failure.
+Value 0.0: The next state is neutral, and the agent is maintaining its current position.
 Values closer to 1 (e.g., 0.7, 0.8): The next state is helpful and moves the agent closer to the task goal.
 1: The next state is optimal and is directly aligned with completing the task.
 
 Response Format:
-1. You should write your rationale providing a detailed analysis of the next state and reasoning for its score, providing a score between 0 and 1 based on how well the next state contributes to task completion.
+1. You should write your rationale providing a detailed analysis of the next state and reasoning for its score, providing a score between -1 and 1 based on how well the next state contributes to task completion.
 
-Output Format: [Rationale] <your thought> [Score] <a value between 0 and 1>"""
+Output Format: [Rationale] <your thought> [Score] <a value between -1 and 1>"""
 
 
 USER_PROMPT_CRITIC = """OBJECTIVE: {usr_obj}
@@ -62,7 +61,7 @@ CURRENT ACTION: {curr_action}
 NEXT STATE PREDICTION: {next_state_pred}
 """
 
-ASSISTANT_PROMPT_WM_SFT = """[Rationale]\n{rationale}\n\n[Next State]\nThe expected next web page accessibility tree is:\n\n{next_acc_tree}"""
+# ASSISTANT_PROMPT_WM_SFT = """{rationale}\n\n[Next State]\nThe expected next web page accessibility tree is:\n\n{next_acc_tree}"""
 
 
 # Primary labeled patterns (same idea as before)
@@ -154,22 +153,24 @@ def extract_judge_score(text: str) -> Optional[float]:
     # 2) Fallback tolerant scan
     return _fallback_single_float(text)
 
-class Critic:
+
+class WebValueModel:
 
     def __init__(self, args):
-        self.tokenizer = AutoTokenizer.from_pretrained(args.critic_model_name)
-        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_idx_critic
-        self.lm = LLM(
-            model=args.critic_model_name, 
-            trust_remote_code=True,
-            tensor_parallel_size=args.critic_tensor_parallel_size,
-            dtype=args.torch_dtype
-        )
-        self.sampling_params = SamplingParams(
-            max_tokens=args.max_new_tokens,
-            temperature=args.temperature,
-            top_p=args.top_p
-        )
+        self.value_model_name = args.value_model_name
+        self.tokenizer = AutoTokenizer.from_pretrained(args.value_model_name)
+        self.clients = []
+        self.vllm_urls = args.vllm_urls
+        for vllm_url in self.vllm_urls:
+            client = OpenAI(
+                api_key="web_value_model", # just a place holder
+                base_url=vllm_url,
+            )
+            self.clients.append(client)
+        self.max_new_tokens = args.max_new_tokens
+        self.temperature = args.temperature
+        self.top_p = args.top_p
+        
         self.sys_prompt = SYS_PROMPT_CRITIC
         self.user_prompt_template = USER_PROMPT_CRITIC
         self.answer_parse_pattern_cot = "[Rationale]"
@@ -177,7 +178,8 @@ class Critic:
 
     def parse_output(self, output_text):
         try:
-            cot_and_score = output_text.split(self.answer_parse_pattern_cot)[1]
+            model_answer = output_text.split("assistantfinal")[-1]
+            cot_and_score = model_answer.split(self.answer_parse_pattern_cot)[1]
             cot, score = cot_and_score.split(self.answer_parse_pattern_score)
             score = float(score.strip())
             return score
@@ -186,11 +188,11 @@ class Critic:
                 score = extract_judge_score(output_text)
                 return score
             except Exception as e:
-                print('error in parsing critic score')
-                print(f"critic output text: {output_text}")
+                print('error in parsing value score')
+                print(f"value model output text: {output_text}")
                 print('\n\n')
                 # print(f'output parsing error: {e} \n')
-                return -1.
+                return -200.
 
 
     def score(self, dreamed_traj, objective):
@@ -203,10 +205,7 @@ class Critic:
                     curr_acc_tree=dreamed_traj[t-1]['next_observation'],
                     prev_action=dreamed_traj[t-1]['action'],
                     curr_action=dreamed_traj[t]['action'],
-                    next_state_pred=ASSISTANT_PROMPT_WM_SFT.format(
-                        rationale=dreamed_traj[t]['wm_cot'],
-                        next_acc_tree=dreamed_traj[t]['next_observation']
-                    )
+                    next_state_pred=dreamed_traj[t]['wm_cot']
                 )},
             ]
             prompt = self.tokenizer.apply_chat_template(
@@ -216,12 +215,20 @@ class Critic:
             )
             batch_inputs.append(prompt)
 
-        batch_outputs = self.lm.generate(
-            batch_inputs,
-            sampling_params=self.sampling_params,
-            use_tqdm=False
+        # batch_outputs = self.lm.generate(
+        #     batch_inputs,
+        #     sampling_params=self.sampling_params,
+        #     use_tqdm=False
+        # )
+        client = random.choice(self.clients)
+        batch_outputs = client.completions.create(
+            model=self.value_model_name,
+            prompt=batch_inputs,   
+            max_tokens=self.max_new_tokens,
+            temperature=self.temperature,
+            top_p=self.top_p
         )
-        batch_values = [-1.] + [self.parse_output(output.outputs[0].text) for output in batch_outputs]
+        batch_values = [-100.] + [self.parse_output(choice.text) for choice in batch_outputs.choices]
         return batch_values
 
         
