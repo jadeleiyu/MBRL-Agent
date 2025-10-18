@@ -1,0 +1,48 @@
+# Data files
+*.jsonl
+*.json
+*.csv
+*.pkl
+*.h5
+
+# Model checkpoints and outputs
+checkpoints/
+outputs/
+results/
+logs/
+
+# Runtime data
+trajectories/
+test_data/
+web_interaction_trajectories.jsonl
+integrated_test_data.jsonl
+test_trajectories.jsonl
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
