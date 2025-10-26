@@ -47,8 +47,8 @@ bash world/run.sh
 
 ## ⚠️ 目前的问题
 
-1、卡不太够，若其他老师同学有卡可以先test看看效果 
-2、训练数据量暂时只有不到1k，因为训练较为耗时，1epoch1.5天的样子，如果卡多可能可以尝试多机训练（目前我自己的8卡train， 8卡部署world model），并且2或3epoch感觉远远不够 
-3、Policy Model同时作为Memory module进行joint policy optimization的想法，正在训练尝试
+1. 卡不太够，若其他老师同学有卡可以先test看看效果 
+2. 训练数据量暂时只有不到1k，因为训练较为耗时，1epoch1.5天的样子，如果卡多可能可以尝试多机训练（目前我自己的8卡train， 8卡部署world model），并且2或3epoch感觉远远不够 
+3. Policy Model同时作为Memory module进行joint policy optimization的想法，正在训练尝试
 
 
