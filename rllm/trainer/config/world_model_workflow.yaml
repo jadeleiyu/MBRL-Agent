@@ -1,0 +1,38 @@
+defaults:
+  - agent_ppo_trainer
+  - _self_
+
+rllm:
+  agent:
+    name: world_model_web_agent
+    max_steps: ${int:${oc.env:WM_AGENT_MAX_STEPS,10}}
+    agent_args: {}
+    engine_args:
+      disable_thinking: true
+      retry_limit: 100
+  env:
+    name: world_model_web
+    env_args: &wm_env_args
+      wm_class_path: rllm.world_model.web_world_model.WebWorldModel
+      wm_model_name: ${oc.env:WM_MODEL_NAME,ms-w7gsz7wq}
+      vllm_urls:
+        - ${oc.env:WM_BASE_URL,https://ms-w7gsz7wq-100041498772-sw.gw.ap-nanjing.ti.tencentcs.com/ms-w7gsz7wq/v1}
+      api_key: ${oc.env:WM_API_KEY,}
+      use_chat_completions: true
+      wm_max_new_tokens: ${int:${oc.env:WM_MAX_TOKENS,8192}}
+      temperature: ${float:${oc.env:WM_TEMPERATURE,0.7}}
+      top_p: ${float:${oc.env:WM_TOP_P,0.9}}
+      max_steps: ${int:${oc.env:WM_ENV_MAX_STEPS,10}}
+  workflow:
+    use_workflow: true
+    name: single_turn_workflow
+    n_parallel_tasks: ${int:${oc.env:WM_WORKFLOW_PARALLEL,256}}
+    retry_limit: 100
+    workflow_args:
+      agent_cls: world_model_web_agent
+      agent_args: {}
+      env_cls: world_model_web
+      env_args: *wm_env_args
+      timeout: ${float:${oc.env:WM_WORKFLOW_TIMEOUT,1e6}}
+      gamma: ${float:${oc.env:WM_WORKFLOW_GAMMA,0.0}}
+      reward_bonus_coeff: ${float:${oc.env:WM_WORKFLOW_REWARD_BONUS,0.0}}

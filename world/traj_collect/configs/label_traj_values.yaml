@@ -1,0 +1,12 @@
+output_dir: /checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/dreamed_trajectories
+torch_dtype: bfloat16
+dream_horizon: 3
+
+env: live
+value_model_name: openai/gpt-oss-120b
+agent_model_name: stanfordnlp/llama8b-nnetnav
+wm_model_name: /checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/wm_sft/gpt-oss-120b-llamafactory-merged-500
+
+temperature: 1.0
+top_p: 0.9
+max_new_tokens: 2048

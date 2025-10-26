@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mbrl_agent"
+version = "0.1.0"
+description = "Model-based RL agent"
+# readme = "README.md"  # enable only if the file exists at project root
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["mbrl_agent*"]

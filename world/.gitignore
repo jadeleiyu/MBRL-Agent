@@ -1,0 +1,11 @@
+archive/
+__pycache__/
+
+notebooks/
+traj_results/
+
+logs/
+train/
+
+sample_outputs/
+sft_data/

@@ -1,0 +1,49 @@
+# ===== Model =====
+model_name_or_path: openai/gpt-oss-120b
+torch_dtype: bfloat16
+# attn_implementation: sdpa          # sdpa is stable with ZeRO-3; use flash-attn2 only if you know it's supported
+use_peft: true
+
+# QLoRA (bitsandbytes 4-bit) ----
+load_in_4bit: true
+bnb_4bit_quant_type: nf4
+bnb_4bit_use_double_quant: true
+bnb_4bit_compute_dtype: bfloat16
+
+# LoRA adapter hyperparams ----
+lora_r: 4
+lora_alpha: 16
+lora_dropout: 0.05                 # small dropout helps at this scale
+# If your trainer supports it, keep this; otherwise specify explicit module list below.
+# lora_target_modules: all-linear
+# If you need explicit targets for GPT-style blocks, uncomment and use:
+# lora_target_modules_explicit: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+lora_target_modules: [q_proj, k_proj, v_proj, o_proj]
+
+# ===== Dataset =====
+dataset_name: jadeleiyu/WM-live-sft
+ds_name_short: live
+dataset_num_proc: 12
+max_length: 2048
+
+# ===== Optimization =====
+learning_rate: 2.0e-4
+lr_scheduler_type: cosine_with_min_lr
+lr_scheduler_kwargs:
+  min_lr_rate: 0.1
+warmup_ratio: 0.03
+num_train_epochs: 1.0
+
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+gradient_checkpointing: true        # essential for 120B
+
+logging_steps: 1
+seed: 42
+output_dir: /checkpoint/multimodal-reasoning/jadeleiyu/mbrl_agent/wm_sft/
+
+# ===== Extras =====
+n_train_examples: -1
+report_to: none                     # or "wandb" / "tensorboard"
+save_safetensors: true
+bf16: true

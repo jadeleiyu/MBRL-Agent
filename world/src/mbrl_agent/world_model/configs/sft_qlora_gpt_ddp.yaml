@@ -1,0 +1,23 @@
+# === Accelerate runtime config (no DeepSpeed) ===
+compute_environment: LOCAL_MACHINE
+debug: false
+
+# Use plain DDP across 8 GPUs
+distributed_type: MULTI_GPU
+num_machines: 1
+num_processes: 8
+machine_rank: 0
+same_network: true
+rdzv_backend: static
+
+# Mixed precision on H200
+mixed_precision: bf16
+downcast_bf16: "no"
+
+# CPU not used; bind all GPUs
+use_cpu: false
+enable_cpu_affinity: false
+gpu_ids: all
+
+# Your training script has a standard main()
+main_training_function: main
