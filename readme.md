@@ -24,5 +24,6 @@ bash world/run.sh  （参考rllm这个branch https://github.com/jadeleiyu/MBRL-A
 
 ## 关于多机大规模训练
 
+`multi-node.sh`
 （参考rllm这个branch https://github.com/jadeleiyu/MBRL-Agent/tree/rllm）
 
