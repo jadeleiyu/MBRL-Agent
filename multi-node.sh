@@ -111,7 +111,7 @@ python3 -m rllm.trainer.verl.train_agent_dapo \
     actor_rollout_ref.rollout.response_length=512 \
     rllm.disable_thinking=True \
     +rllm.log_snapshots=true \
-    trainer.total_epochs=10
+    trainer.total_epochs=100
 
 #    agent.stepwise_advantage_mode="broadcast" \
 #    actor_rollout_ref.rollout.enable_chunked_prefill=False \
