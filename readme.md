@@ -45,10 +45,11 @@ bash world/run.sh
 
 体感：GSPO 效果更好，但收敛稍慢。
 
-## ⚠️ 目前的问题
+## 关于多机大规模训练
 
-1. 卡不太够，若其他老师同学有卡可以先test看看效果 
-2. 训练数据量暂时只有不到1k，因为训练较为耗时，1epoch1.5天的样子，如果卡多可能可以尝试多机训练（目前我自己的8卡train， 8卡部署world model），并且2或3epoch感觉远远不够 
-3. Policy Model同时作为Memory module进行joint policy optimization的想法，正在训练尝试
+1. 先生成数据 （`bash world/run.sh`，需修改相关参数），如果有条件，可先都rollout一遍，选择模型有成功又失败的数据来train。
+2. 推荐从gspo或grpo开始（`multi_node_gspo.sh`,`multi_node_grpo.sh`）
+3. 需要先部署world model，然后在脚本里修改url等，在当前setting下，推荐world model和train model的node比例为 1:2 or 1:1，也就是1个node部署，1或2node训练。
+4. 当前单机训练无任何问题，multi_node脚本记得修改save/test freq等相关参数，多机参数由于显卡有限尚未测试，但应该问题不大。
 
 

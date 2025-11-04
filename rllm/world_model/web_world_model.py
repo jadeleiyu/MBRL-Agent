@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional, Sequence
 
+import httpx
 from openai import OpenAI
 
 # os.environ["VLLM_CONFIGURE_LOGGING"] = "0"   # set this *before* importing vllm
@@ -98,11 +99,21 @@ class WebWorldModel:
         self.api_key = getattr(args, "api_key", os.environ.get("WM_API_KEY", "web_world_model"))
         self.use_chat_completions = getattr(args, "use_chat_completions", True)
 
+        # 创建高并发 httpx 客户端配置
+        http_client = httpx.Client(
+            limits=httpx.Limits(
+                max_connections=500,
+                max_keepalive_connections=100,
+            ),
+            timeout=httpx.Timeout(300.0, connect=60.0),
+        )
+
         self.clients = []
         for vllm_url in self.vllm_urls:
             client = OpenAI(
                 api_key=self.api_key,
                 base_url=vllm_url,  # should end with /v1
+                http_client=http_client,
             )
             self.clients.append(client)
 
@@ -150,8 +161,9 @@ class WebWorldModel:
                 retry += 1
                 if retry > max_retries:
                     raise exc
-                sleep_time = base_delay * (2**(retry - 1))
-                time.sleep(sleep_time + random.uniform(0, 0.5 * sleep_time))
+                # 固定延迟重试
+                sleep_time = base_delay + random.uniform(0, 0.5)
+                time.sleep(sleep_time)
 
     def _format_messages(self, messages):
         formatted = []
