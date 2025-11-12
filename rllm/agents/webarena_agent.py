@@ -638,7 +638,7 @@ Strict output contract (append-only):
 - Then return EXACTLY THREE lines for the previous step:
   `Step <k>:`
   `page: <precise, non-generic page state + several concise, goal-helpful details>`
-  `action: <previous final action string and concise description, e.g. action: click [6002], click on the "Create project" button>`
+  `action: <exact previous final action string and concise description, e.g. action: click [6002], click on the "Create project" button>`
 - The `page:` line MUST be accurate and non-generic and use several short sentences: first, state exactly where we are / what the page is (e.g., current view/section/state). Then add goal-relevant details that help progress. You may (a) mention specific UI items only when critical to the objective, or (b) give compact grouped descriptions (e.g., "buttons related to checkout", "filters for price/brand", "form fields to enter shipping info"). Prefer information that advances the objective; avoid element ids, CSS, and irrelevant clutter; keep it concise.
 - Do NOT rewrite or repeat earlier memory. Do NOT include any earlier lines. Return ONLY the new lines to append (the update), no extra headings, comments, quotes, or blank pre/post padding.
 
