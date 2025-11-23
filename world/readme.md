@@ -258,7 +258,7 @@ python world/build_webarena_trajs_from_nnetnav.py \
 }
 ```
 
-其中 assistant 消息始终携带标准动作（ACTION 行），并与原样本的起点对齐。如果未提供 `--completion_model`，脚本会根据已有 action/observation 生成结构化模板文本；若提供模型，则会将 system/user prompt 送入模型补全文本，确保和训练时的前向/反向格式保持一致。窗口规则沿用“只截末尾 2–9 步且每个原始任务最多 2 条样本”的约束。
+其中 assistant 消息始终携带标准动作（ACTION 行），并与原样本的起点对齐。如果未提供 `--completion_model`，脚本会根据已有 action/observation 生成结构化模板文本；若提供模型，则会将 system/user prompt 送入模型补全文本，确保和训练时的前向/反向格式保持一致。窗口规则沿用“只截末尾 2–5 步且每个原始任务最多 2 条样本”的约束。
 
 > ⚠️ 训练阶段会在 **构建 RL 数据集** 时再次检查 `standard_answer_messages` 的 token 长度：当 `data.filter_standard_answer_messages`（默认启用）为真时，`verl.utils.dataset.RLHFDataset` 会用当前 tokenizer 解析该字段，并按照 `data.standard_answer_prompt_max_length`（默认等于 `data.max_prompt_length`）与 `data.standard_answer_response_max_length`（默认等于 `data.max_response_length`）的限制丢弃超长样本。这样可确保进入 rollout 的标准答案在 prompt/response 两段都不会超过最大序列长度。
 
