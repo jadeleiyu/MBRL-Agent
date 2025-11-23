@@ -27,6 +27,10 @@ GSPO：
 bash scripts/agent/webarena/gspo.sh
 ```
 
+**本脚本当前已更新为带有标准答案的版本，通过设置STANDARD_ANSWER_K=${STANDARD_ANSWER_K:-1}，选择每隔k-1步，每条数据，用标准答案随机替换rollout group中的一条，reward为1。**
+
+**目前为5步以内的数据，初步观察成功率较高，可能要生成稍微长点的数据。**
+
 📌 生成数据：
 
 ```bash

@@ -103,6 +103,10 @@ class RLHFDataset(Dataset):
         self.image_key = config.get("image_key", "images")
         self.video_key = config.get("video_key", "videos")
         self.max_prompt_length = config.get("max_prompt_length", 1024)
+        self.max_response_length = config.get("max_response_length", 1024)
+        self.filter_standard_answer_messages = config.get("filter_standard_answer_messages", True)
+        self.standard_answer_prompt_max_length = config.get("standard_answer_prompt_max_length", self.max_prompt_length)
+        self.standard_answer_response_max_length = config.get("standard_answer_response_max_length", self.max_response_length)
         self.return_raw_chat = config.get("return_raw_chat", False)
         self.return_full_prompt = config.get("return_full_prompt", False)
         self.truncation = config.get("truncation", "error")
@@ -138,6 +142,7 @@ class RLHFDataset(Dataset):
         print(f"dataset len: {len(self.dataframe)}")
 
         self.dataframe = self.maybe_filter_out_long_prompts(self.dataframe)
+        self.dataframe = self._maybe_filter_standard_answers(self.dataframe)
 
     def maybe_filter_out_long_prompts(self, dataframe: datasets.Dataset = None):
         # filter out too long prompts
@@ -174,6 +179,75 @@ class RLHFDataset(Dataset):
 
             print(f"filter dataset len: {len(dataframe)}")
         return dataframe
+
+    def _maybe_filter_standard_answers(self, dataframe: datasets.Dataset):
+        if not self.filter_standard_answer_messages:
+            return dataframe
+        if "standard_answer_messages" not in dataframe.column_names:
+            return dataframe
+        try:
+            from rllm.parser import ChatTemplateParser
+        except Exception as exc:  # pragma: no cover - optional dependency
+            logger.warning("Skip standard_answer filtering because ChatTemplateParser is unavailable: %s", exc)
+            return dataframe
+
+        parser = ChatTemplateParser.get_parser(
+            self.tokenizer,
+            disable_thinking=self.config.get("disable_thinking", False),
+        )
+
+        prompt_limit = int(self.standard_answer_prompt_max_length or self.max_prompt_length)
+        response_limit = int(self.standard_answer_response_max_length or self.max_response_length)
+
+        keep_indices = []
+        dropped = 0
+        for idx in range(len(dataframe)):
+            record = dataframe[idx]
+            messages = self._normalize_standard_answer_messages(record.get("standard_answer_messages"))
+            if not messages:
+                keep_indices.append(idx)
+                continue
+            try:
+                prompt_tokens, response_tokens, _ = parser.tokenize_and_mask_cumulative(messages)
+            except Exception:
+                dropped += 1
+                continue
+            if len(prompt_tokens) <= prompt_limit and len(response_tokens) <= response_limit:
+                keep_indices.append(idx)
+            else:
+                dropped += 1
+
+        if dropped:
+            dataframe = dataframe.select(keep_indices)
+            logger.info(
+                "Filtered %d samples whose standard_answer_messages exceeded (%d prompt, %d response) tokens",
+                dropped,
+                prompt_limit,
+                response_limit,
+            )
+        return dataframe
+
+    @staticmethod
+    def _normalize_standard_answer_messages(messages):
+        if messages is None:
+            return None
+        if isinstance(messages, list):
+            normalized = []
+            for msg in messages:
+                if isinstance(msg, dict):
+                    normalized.append(
+                        {
+                            "role": msg.get("role", ""),
+                            "content": msg.get("content", ""),
+                        }
+                    )
+            return normalized or None
+        if isinstance(messages, dict):
+            roles = messages.get("role")
+            contents = messages.get("content")
+            if isinstance(roles, list) and isinstance(contents, list):
+                return [{"role": r, "content": c} for r, c in zip(roles, contents)]
+        return None
 
     def resume_dataset_state(self):
         self.serialize_dataset = not hasattr(self, "original_data_files")

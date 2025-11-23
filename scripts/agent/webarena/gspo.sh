@@ -1,3 +1,6 @@
+
+
+
 set -x
 
 export VLLM_ATTENTION_BACKEND=FLASH_ATTN
@@ -6,6 +9,10 @@ export VLLM_USE_V1=1
 export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
 export VLLM_ENGINE_ITERATION_TIMEOUT_S=100000000000
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}
+STANDARD_ANSWER_K=${STANDARD_ANSWER_K:-1}
+STANDARD_ANSWER_REWARD=${STANDARD_ANSWER_REWARD:-1.0}
+
+
 
 # Resolve repository root that contains the packaged rllm module
 RLLM_DIR=$(python3 -c "import rllm, os; print(os.path.dirname(os.path.dirname(rllm.__file__)))")
@@ -19,9 +26,9 @@ export WANDB_API_KEY="394c7970d1b0dd8466bae2e50f706f51975930ae"
 
 # Ensure the learned world model implementation is available
 WM_CLASS_PATH=${WM_CLASS_PATH:-rllm.world_model.web_world_model.WebWorldModel}
-WM_MODEL_NAME=${WM_MODEL_NAME:-ms-w7gsz7wq}
-WM_API_KEY=${WM_API_KEY:-"670604055d48b81"}
-WM_BASE_URL=${WM_BASE_URL:-https://ms-w7gsz7wq-100041498772-sw.gw.ap-nanjing.ti.tencentcs.com/ms-w7gsz7wq/v1}
+WM_MODEL_NAME=${WM_MODEL_NAME:-ms-p9sdzjvk}
+WM_API_KEY=${WM_API_KEY:-"44994d0596ade8d"}
+WM_BASE_URL=${WM_BASE_URL:-https://ms-p9sdzjvk-100034032793-sw.gw.ap-zhongwei.ti.tencentcs.com/ms-p9sdzjvk/v1}
 WM_MAX_TOKENS=${WM_MAX_TOKENS:-8192}
 WM_TEMPERATURE=${WM_TEMPERATURE:-0.7}
 WM_TOP_P=${WM_TOP_P:-0.9}
@@ -30,14 +37,14 @@ WM_TOP_P=${WM_TOP_P:-0.9}
 python3 -m rllm.trainer.verl.train_agent_dapo \
     algorithm.adv_estimator=grpo \
     reward_model.reward_manager=dapo \
-    data.train_files=${DATA_ROOT}/train.parquet \
+    data.train_files=${DATA_ROOT}/webarena_trajs_train.parquet \
     data.val_files=${DATA_ROOT}/test.parquet \
     data.train_batch_size=8 \
     data.val_batch_size=64 \
     data.max_prompt_length=32000 \
     data.max_response_length=16000 \
     actor_rollout_ref.actor.policy_loss.loss_mode=gspo \
-    actor_rollout_ref.model.path=/data/dinghang/OpenRLHF/Llama-3.1-8B-Ins \
+    actor_rollout_ref.model.path=/data/public_models/Llama-3.1-8B-Instruct \
     actor_rollout_ref.hybrid_engine=True \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
@@ -87,7 +94,7 @@ python3 -m rllm.trainer.verl.train_agent_dapo \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
     trainer.save_freq=15 \
-    trainer.test_freq=75 \
+    trainer.test_freq=15 \
     trainer.default_hdfs_dir=null \
     rllm.env.name=world_model_web \
     +rllm.env.env_args.wm_class_path=${WM_CLASS_PATH} \
@@ -98,9 +105,11 @@ python3 -m rllm.trainer.verl.train_agent_dapo \
     +rllm.env.env_args.wm_max_new_tokens=${WM_MAX_TOKENS} \
     +rllm.env.env_args.temperature=${WM_TEMPERATURE} \
     +rllm.env.env_args.top_p=${WM_TOP_P} \
-    +rllm.env.env_args.max_steps=10 \
+    +rllm.env.env_args.max_steps=5 \
     rllm.agent.name=world_model_web_agent \
-    rllm.agent.max_steps=10 \
+    rllm.agent.max_steps=5 \
+    rllm.standard_answer.inject_every_k=${STANDARD_ANSWER_K} \
+    rllm.standard_answer.reward=${STANDARD_ANSWER_REWARD} \
     rllm.disable_thinking=True \
     +rllm.log_snapshots=true \
     trainer.total_epochs=10

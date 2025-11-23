@@ -61,6 +61,10 @@ rllm:
   rejection_sample:
     enable: False
     multiplier: 1
+  standard_answer:
+    inject_every_k: 0
+    reward: 1.0
+    seed: null
 
 # DAPO-specific overrides
 reward_model:

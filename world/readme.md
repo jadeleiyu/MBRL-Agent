@@ -208,6 +208,8 @@ run_ppo(env=None, world=wm, instructions=["Add Blue Tee to cart"],
 }
 ```
 
+启用强化学习时，可通过 `scripts/agent/webarena/gspo.sh` 中的 `STANDARD_ANSWER_K`、`STANDARD_ANSWER_REWARD` 环境变量（对应配置 `rllm.standard_answer.inject_every_k`、`rllm.standard_answer.reward`）控制是否每隔若干训练 step 将 `standard_answer_messages` 注入到 rollout 批次中，超长 prompt/response 会被预先过滤。
+
 **Processed (for AWR/PPO replay)**:
 
 ```json
@@ -218,6 +220,47 @@ run_ppo(env=None, world=wm, instructions=["Add Blue Tee to cart"],
   ]
 }
 ```
+
+### nnetnav → WebArena 标准答案数据
+
+脚本 `world/build_webarena_trajs_from_nnetnav.py` 可将 `stanfordnlp/nnetnav-*` 数据转成 WebArena 训练样本，并为每条样本附加一条与前向/反向序列一致的 `standard_answer_messages`。该字段是一个完整的 message list（system + user + assistant），assistant 消息可由内置模板生成，也可通过 `--completion_model` 指定本地 HuggingFace Causal LM 来“补全”推理细节。
+
+```bash
+python world/build_webarena_trajs_from_nnetnav.py \
+  --input_jsonl filtered.jsonl \
+  --train_jsonl data/webarena_trajs.train.jsonl \
+  --test_jsonl data/webarena_trajs.test.jsonl \
+  --train_parquet data/webarena_trajs.train.parquet \
+  --test_parquet data/webarena_trajs.test.parquet \
+  --train_ratio 0.9 \
+  --completion_model path/to/your-model 
+```
+
+输出中的主体字段与原始训练数据完全一致，仅新增 `standard_answer_messages`：
+
+```json
+{
+  "prompt": [
+    {"role": "system", "content": "..."},
+    {"role": "user", "content": "OBJECTIVE:\n...\nCURRENT OBSERVATION:\n..."}
+  ],
+  "standard_answer_messages": [
+    {"role": "system", "content": "..."},
+    {"role": "user", "content": "OBJECTIVE:\n..."},
+    {"role": "assistant", "content": "INTERACTION HISTORY SUMMARY:\n..."}
+  ],
+  "extra_info": {
+    "trajectory_id": "webarena_openended_3417",
+    "window_length": 3,
+    "window_start_step": 5,
+    "window_end_step": 7
+  }
+}
+```
+
+其中 assistant 消息始终携带标准动作（ACTION 行），并与原样本的起点对齐。如果未提供 `--completion_model`，脚本会根据已有 action/observation 生成结构化模板文本；若提供模型，则会将 system/user prompt 送入模型补全文本，确保和训练时的前向/反向格式保持一致。窗口规则沿用“只截末尾 2–9 步且每个原始任务最多 2 条样本”的约束。
+
+> ⚠️ 训练阶段会在 **构建 RL 数据集** 时再次检查 `standard_answer_messages` 的 token 长度：当 `data.filter_standard_answer_messages`（默认启用）为真时，`verl.utils.dataset.RLHFDataset` 会用当前 tokenizer 解析该字段，并按照 `data.standard_answer_prompt_max_length`（默认等于 `data.max_prompt_length`）与 `data.standard_answer_response_max_length`（默认等于 `data.max_response_length`）的限制丢弃超长样本。这样可确保进入 rollout 的标准答案在 prompt/response 两段都不会超过最大序列长度。
 
 ---
 
