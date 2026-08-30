@@ -17,8 +17,8 @@ if [ ! -d "${DATA_ROOT}" ]; then
 fi
 
 # World-model configuration can be overridden via environment variables before launch
-export WM_MODEL_NAME=${WM_MODEL_NAME:-ms-w7gsz7wq}
-export WM_BASE_URL=${WM_BASE_URL:-https://ms-w7gsz7wq-100041498772-sw.gw.ap-nanjing.ti.tencentcs.com/ms-w7gsz7wq/v1}
+export WM_MODEL_NAME=${WM_MODEL_NAME:-}
+export WM_BASE_URL=${WM_BASE_URL:-}
 export WM_MAX_TOKENS=${WM_MAX_TOKENS:-8192}
 export WM_TEMPERATURE=${WM_TEMPERATURE:-0.7}
 export WM_TOP_P=${WM_TOP_P:-0.9}
@@ -34,7 +34,7 @@ python3 -m rllm.trainer.verl.train_agent_ppo \
     data.val_batch_size=64 \
     data.max_prompt_length=20480 \
     data.max_response_length=10240 \
-    actor_rollout_ref.model.path=/data/dinghang/OpenRLHF/Llama-3.1-8B-Ins \
+    actor_rollout_ref.model.path=/Llama-3.1-8B-Ins \
     actor_rollout_ref.hybrid_engine=True \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
