@@ -22,13 +22,13 @@ DATA_ROOT=${WM_DATA_ROOT:-${RLLM_DIR}/data/webarena}
 if [ ! -d "${DATA_ROOT}" ]; then
     echo "Warning: expected dataset directory not found at ${DATA_ROOT}" >&2
 fi
-export WANDB_API_KEY="394c7970d1b0dd8466bae2e50f706f51975930ae"
+export WANDB_API_KEY=""
 
 # Ensure the learned world model implementation is available
 WM_CLASS_PATH=${WM_CLASS_PATH:-rllm.world_model.web_world_model.WebWorldModel}
-WM_MODEL_NAME=${WM_MODEL_NAME:-ms-p9sdzjvk}
-WM_API_KEY=${WM_API_KEY:-"44994d0596ade8d"}
-WM_BASE_URL=${WM_BASE_URL:-https://ms-p9sdzjvk-100034032793-sw.gw.ap-zhongwei.ti.tencentcs.com/ms-p9sdzjvk/v1}
+WM_MODEL_NAME=${WM_MODEL_NAME:-}
+WM_API_KEY=${WM_API_KEY:-""}
+WM_BASE_URL=${WM_BASE_URL:-}
 WM_MAX_TOKENS=${WM_MAX_TOKENS:-8192}
 WM_TEMPERATURE=${WM_TEMPERATURE:-0.7}
 WM_TOP_P=${WM_TOP_P:-0.9}
